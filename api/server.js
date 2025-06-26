@@ -18,7 +18,7 @@ const startServer = async () => {
 
 const allowedOrigins = [
   "http://localhost:3000",
-  "https://chowspace.vercel.app/",
+  "https://chowspace.vercel.app",
 ];
 
 app.use(express.json());
