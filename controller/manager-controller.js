@@ -28,7 +28,7 @@ async function createManager(req, res) {
       phoneNumber,
       password: hashedPassword,
       role: "manager",
-      vendorId: vendor._id, // ✅ Attach the vendorId to the user
+      vendorId: vendor._id,
       createdBy: req.user._id,
     });
 
@@ -38,11 +38,13 @@ async function createManager(req, res) {
     });
 
     await newManager.save();
+    await newManager.populate("vendor");
 
     res.status(201).json({
       success: true,
       message: "Manager created",
       manager: newManager,
+      status: newManager.vendor.status,
     });
   } catch (error) {
     console.error("Create manager error:", error.message);
@@ -70,38 +72,26 @@ async function getManagers(req, res) {
   }
 }
 
-const getManagerVendor = async (req, res) => {
-  const managerId = req.params.managerId;
-
+const getManagersWithStatus = async (req, res) => {
   try {
-    const manager = await Manager.findById(managerId);
-    if (!manager) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Manager not found" });
-    }
+    const managers = await Manager.find().populate("vendor");
 
-    const vendor = await Vendor.findById(manager.vendorId);
-    if (!vendor) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Vendor not found" });
-    }
+    const result = managers.map((manager) => ({
+      _id: manager._id,
+      user: manager.user,
+      vendor: manager.vendor._id,
+      vendorStatus: manager.vendor.status,
+    }));
 
-    res.status(200).json({
-      success: true,
-      vendorId: vendor._id,
-      vendorSlug: vendor.slug,
-      status: vendor.status,
-    });
-  } catch (error) {
-    console.error("Error getting vendor for manager:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    res.status(200).json({ success: true, managers: result });
+  } catch (err) {
+    console.error("Failed to get managers:", err);
+    res.status(500).json({ message: "Error fetching managers" });
   }
 };
 
 module.exports = {
   createManager,
-  getManagerVendor,
   getManagers,
+  getManagersWithStatus,
 };

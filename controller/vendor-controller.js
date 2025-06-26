@@ -2,7 +2,7 @@ const Vendor = require("../models/vendor");
 const User = require("../models/user");
 const bcrypt = require("bcrypt");
 const slugify = require("slugify");
-
+const Manager = require("../models/manager");
 const createVendor = async (req, res) => {
   const {
     email,
@@ -130,42 +130,75 @@ const getVendorBySlug = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-// Get Vendor by status
-const toggleVendorStatus = async (req, res) => {
-  const { vendorId, status } = req.body;
 
-  if (!vendorId || !["opened", "closed"].includes(status)) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid vendorId or status",
-    });
+const toggleVendorStatus = async (req, res) => {
+  const { status } = req.body;
+
+  if (!["opened", "closed"].includes(status)) {
+    return res.status(400).json({ success: false, message: "Invalid status" });
   }
 
   try {
-    const vendor = await Vendor.findByIdAndUpdate(
-      vendorId,
+    if (req.user.role !== "manager") {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized: Only managers can perform this action",
+      });
+    }
+
+    const managerDoc = await Manager.findOne({ user: req.user._id }).populate(
+      "vendor"
+    );
+
+    if (!managerDoc || !managerDoc.vendor) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Vendor not found for manager" });
+    }
+
+    const updatedVendor = await Vendor.findByIdAndUpdate(
+      managerDoc.vendor._id,
       { status },
       { new: true }
     );
 
-    if (!vendor) {
-      return res.status(404).json({
-        success: false,
-        message: "Vendor not found",
-      });
+    if (!updatedVendor) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Vendor not found" });
     }
 
     res.status(200).json({
       success: true,
-      message: `Vendor is now ${status}`,
-      vendor,
+      message: `Store is now ${status}`,
+      vendor: updatedVendor,
     });
+  } catch (err) {
+    console.error("Toggle error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+const getVendorStatus = async (req, res) => {
+  const { vendorId } = req.params;
+
+  if (!vendorId) {
+    return res
+      .status(400)
+      .json({ success: false, message: "vendorId is required" });
+  }
+
+  try {
+    const vendor = await Vendor.findById(vendorId).select("status");
+    if (!vendor) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Vendor not found" });
+    }
+    res.status(200).json({ success: true, status: vendor.status });
   } catch (error) {
-    console.error("Error toggling vendor status:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
+    console.error(error);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
@@ -173,5 +206,6 @@ module.exports = {
   createVendor,
   getAllVendor,
   getVendorBySlug,
+  getVendorStatus,
   toggleVendorStatus,
 };
