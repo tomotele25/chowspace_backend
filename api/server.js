@@ -42,6 +42,9 @@ app.use("/api", vendorRoute);
 app.use("/api", productRoute);
 app.use("/api", managerRoute);
 app.use("/api", orderRoute);
-
+app.get("/", (req, res) => {
+  console.log("test reached");
+  res.send("Hello world!");
+});
 startServer();
 module.exports = app;
