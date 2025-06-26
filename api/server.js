@@ -18,8 +18,7 @@ const startServer = async () => {
 
 const allowedOrigins = [
   "http://localhost:3000",
-  "https://rightminds-academy-risy.vercel.app",
-  "https://rightminds-academy-risy",
+  "https://chowspace.vercel.app/",
 ];
 
 app.use(express.json());
