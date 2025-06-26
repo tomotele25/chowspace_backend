@@ -24,7 +24,7 @@ const OrderSchema = new mongoose.Schema({
     enum: ["walk-in", "delivery"],
     required: true,
   },
-  note: { type: String, default: "" },
+
   totalAmount: { type: Number, required: true },
   status: {
     type: String,

@@ -1,132 +1,177 @@
-require("dotenv").config();
 const Vendor = require("../models/vendor");
+const User = require("../models/user");
 const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
-// Register Our Vendor
+const slugify = require("slugify");
 
-const registerVendor = async (req, res) => {
+const createVendor = async (req, res) => {
+  const {
+    email,
+    password,
+    fullname,
+    businessName,
+    contact,
+    logo,
+    location,
+    address,
+    category,
+  } = req.body;
+
   try {
-    const {
-      fullname,
-      businessName,
-      email,
-      password,
-      phoneNumber,
-      location,
-      address,
-      image,
-      category,
-    } = req.body;
-
-    // Validate required fields
     if (
-      !fullname ||
-      !businessName ||
       !email ||
       !password ||
-      !phoneNumber ||
-      !location
+      !fullname ||
+      !businessName ||
+      !contact ||
+      !location ||
+      !address ||
+      !category
     ) {
       return res.status(400).json({
         success: false,
-        message:
-          "Fullname, Business Name, Email, Password, Phone Number, and Location are required.",
+        message: "All required fields must be provided",
       });
     }
 
-    const existingVendor = await Vendor.findOne({ email });
-    if (existingVendor) {
-      return res.status(400).json({
-        success: false,
-        message: "Vendor already exist",
-      });
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res
+        .status(400)
+        .json({ success: false, message: "User already exists" });
     }
 
-    // Hash the password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Create the new vendor
-    const newVendor = new Vendor({
+    const newUser = await User.create({
       fullname,
-      businessName,
       email,
       password: hashedPassword,
-      phoneNumber,
-      location,
-      address: address || "",
-      image: image || "",
-      category: category || "",
+      phoneNumber: contact,
+      role: "vendor",
     });
 
-    await newVendor.save();
+    const slug = slugify(businessName, { lower: true, strict: true });
 
-    res.status(201).json({
+    const newVendor = await Vendor.create({
+      user: newUser._id,
+      slug,
+      email,
+      fullname,
+      contact,
+      location,
+      logo,
+      address,
+      category,
+      businessName,
+      password: hashedPassword,
+    });
+
+    // Response
+    res.status(200).json({
       success: true,
-      message: "Vendor created successfully",
-      vendor: {
-        id: newVendor._id,
+      message: "Account created successfully",
+      user: {
         fullname: newVendor.fullname,
-        businessName: newVendor.businessName,
         email: newVendor.email,
-        phoneNumber: newVendor.phoneNumber,
+        contact: newVendor.contact,
+        role: "vendor",
         location: newVendor.location,
+        logo: newVendor.logo,
         address: newVendor.address,
-        image: newVendor.image,
         category: newVendor.category,
+        businessName: newVendor.businessName,
+        slug: newVendor.slug,
+        userId: newUser._id,
       },
     });
   } catch (error) {
-    console.error("Error creating vendor:", error.message);
-    res.status(500).json({ success: false, message: "Server error" });
+    console.error("Error creating vendor:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
   }
 };
 
-// Lets Login our vendor
-const loginVendor = async (req, res) => {
+// Get All Vendors
+const getAllVendor = async (req, res) => {
   try {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({
+    const vendors = await Vendor.find();
+
+    if (!vendors || vendors.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "No vendors found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Vendors successfully found",
+      vendors,
+    });
+  } catch (error) {
+    console.error("Error fetching vendors:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+// Get Vendor by Slug
+const getVendorBySlug = async (req, res) => {
+  try {
+    const vendor = await Vendor.findOne({ slug: req.params.slug });
+    if (!vendor) {
+      return res.status(404).json({ message: "Vendor not found" });
+    }
+    res.status(200).json({ success: true, vendor });
+  } catch (err) {
+    console.error("Error fetching vendor by slug:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+// Get Vendor by status
+const toggleVendorStatus = async (req, res) => {
+  const { vendorId, status } = req.body;
+
+  if (!vendorId || !["opened", "closed"].includes(status)) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid vendorId or status",
+    });
+  }
+
+  try {
+    const vendor = await Vendor.findByIdAndUpdate(
+      vendorId,
+      { status },
+      { new: true }
+    );
+
+    if (!vendor) {
+      return res.status(404).json({
         success: false,
-        message: "All fields are required ",
+        message: "Vendor not found",
       });
     }
 
-    const vendor = await Vendor.findOne({ email });
-    if (!vendor) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Invalid Credentials" });
-    }
-
-    const isPasswordMatched = await bcrypt.compare(password, vendor.password);
-    if (!isPasswordMatched) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid Credentials" });
-    }
-    const payload = { email, password };
-    const accessToken = jwt.sign(payload, process.env.JWT_SECRET, {
-      expiresIn: "2d",
-    });
-
     res.status(200).json({
       success: true,
-      message: "Login successful",
-      accessToken,
-      vendor: {
-        id: vendor._id,
-        fullname: vendor.fullname,
-        businessName: vendor.businessName,
-        email: vendor.email,
-        location: vendor.location,
-      },
+      message: `Vendor is now ${status}`,
+      vendor,
     });
   } catch (error) {
-    console.error("Error logging in vendor:", error.message);
-    res.status(500).json({ success: false, message: "server error" });
+    console.error("Error toggling vendor status:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
   }
 };
 
-module.exports = { registerVendor, loginVendor };
+module.exports = {
+  createVendor,
+  getAllVendor,
+  getVendorBySlug,
+  toggleVendorStatus,
+};

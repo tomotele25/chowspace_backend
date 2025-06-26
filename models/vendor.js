@@ -1,59 +1,61 @@
 const mongoose = require("mongoose");
 
-const VendorSchema = new mongoose.Schema(
+const vendorSchema = new mongoose.Schema(
   {
-    fullname: {
-      type: String,
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
       required: true,
-      trim: true,
     },
     businessName: {
       type: String,
       required: true,
-      trim: true,
     },
     email: {
       type: String,
       required: true,
-      unique: true,
       lowercase: true,
-      trim: true,
+      unique: true, //
     },
-    password: {
+    fullname: {
       type: String,
       required: true,
-      minlength: 6,
-    },
-    phoneNumber: {
-      type: String,
-      required: true,
-      trim: true,
     },
     location: {
       type: String,
       required: true,
-      trim: true,
+    },
+    logo: {
+      type: String,
+      default: "",
+    },
+    contact: {
+      type: String,
+      required: true,
     },
     address: {
       type: String,
-      trim: true,
-      default: "",
+      required: true,
     },
-    image: {
+    password: {
       type: String,
-      default: "",
+      required: true,
     },
     category: {
       type: String,
-      default: "",
+      required: true,
     },
-    role: {
+    slug: {
       type: String,
-      enum: ["vendor"],
-      default: "vendor",
+      unique: true,
+    },
+    status: {
+      type: String,
+      enum: ["opened", "closed"],
+      default: "closed",
     },
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model("Vendor", VendorSchema);
+module.exports = mongoose.model("Vendor", vendorSchema);

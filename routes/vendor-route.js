@@ -1,12 +1,15 @@
 const express = require("express");
+const router = express.Router();
 const {
-  loginVendor,
-  registerVendor,
+  createVendor,
+  getAllVendor,
+  getVendorBySlug,
+  toggleVendorStatus,
 } = require("../controller/vendor-controller");
 
-const router = express.Router();
-
-router.post("/auth/vendor/register", registerVendor);
-router.post("/auth/vendor/login", loginVendor);
+router.post("/vendor/create", createVendor);
+router.get("/vendor/getVendors", getAllVendor);
+router.get("/vendor/:slug", getVendorBySlug);
+router.put("/vendor/toggleStatus", toggleVendorStatus);
 
 module.exports = router;

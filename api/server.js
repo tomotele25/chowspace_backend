@@ -3,9 +3,12 @@ const express = require("express");
 const app = express();
 const PORT = 2005;
 const connectToDb = require("../database/db");
-const vendorRoute = require("../routes/vendor-route");
 const cors = require("cors");
-
+const authRoute = require("../routes/auth-route");
+const vendorRoute = require("../routes/vendor-route");
+const productRoute = require("../routes/product-route");
+const managerRoute = require("../routes/manager-route");
+const orderRoute = require("../routes/order-router");
 const startServer = async () => {
   connectToDb();
   app.listen(PORT, () => {
@@ -34,7 +37,11 @@ app.use(
   })
 );
 
+app.use("/api", authRoute);
 app.use("/api", vendorRoute);
+app.use("/api", productRoute);
+app.use("/api", managerRoute);
+app.use("/api", orderRoute);
 
 startServer();
 module.exports = app;
