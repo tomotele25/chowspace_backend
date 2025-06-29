@@ -4,18 +4,13 @@ const Manager = require("../models/manager");
 
 // Create a product
 const createProduct = async (req, res) => {
-  const { productName, price, category, image, available } = req.body;
+  const { productName, price, category, available } = req.body;
 
-  if (
-    !productName ||
-    !price ||
-    !category ||
-    !image ||
-    available === undefined
-  ) {
-    return res
-      .status(400)
-      .json({ success: false, message: "All fields are required" });
+  if (!productName || !price || !category || available === undefined) {
+    return res.status(400).json({
+      success: false,
+      message: "All fields except image are required",
+    });
   }
 
   try {
@@ -44,11 +39,19 @@ const createProduct = async (req, res) => {
         .json({ success: false, message: "Vendor profile not found" });
     }
 
+    const imageUrl = req.file?.path || null;
+
+    if (!imageUrl) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Product image is required" });
+    }
+
     const newProduct = new Product({
       productName,
       price,
       category,
-      image,
+      image: imageUrl,
       available,
       vendor: vendor._id,
       createdBy: user._id,
@@ -69,7 +72,6 @@ const createProduct = async (req, res) => {
     });
   }
 };
-
 // Get products for the logged-in vendor/manager
 const getVendorProducts = async (req, res) => {
   try {
