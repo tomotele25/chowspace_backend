@@ -3,6 +3,8 @@ const User = require("../models/user");
 const bcrypt = require("bcrypt");
 const slugify = require("slugify");
 const Manager = require("../models/manager");
+const cloudinary = require("../utils/cloudinary");
+const multer = require("multer");
 const createVendor = async (req, res) => {
   const {
     email,
@@ -202,10 +204,79 @@ const getVendorStatus = async (req, res) => {
   }
 };
 
+const updateVendorProfile = async (req, res) => {
+  try {
+    const user = req.user;
+
+    if (!user || !user.vendorId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized: vendorId not found",
+      });
+    }
+
+    const vendorId = user.vendorId;
+    const userId = user._id;
+
+    const { businessName, contact, location, address, password } = req.body;
+
+    const vendorUpdateData = {
+      businessName,
+      contact,
+      location,
+      address,
+    };
+
+    const userUpdateData = {};
+
+    if (password) {
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+      userUpdateData.password = hashedPassword;
+    }
+
+    if (req.file) {
+      vendorUpdateData.logo = req.file.path;
+    }
+
+    // Update vendor profile
+    const updatedVendor = await Vendor.findByIdAndUpdate(
+      vendorId,
+      vendorUpdateData,
+      { new: true }
+    );
+
+    if (!updatedVendor) {
+      return res.status(404).json({
+        success: false,
+        message: "Vendor not found",
+      });
+    }
+
+    if (password) {
+      await User.findByIdAndUpdate(userId, userUpdateData);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      vendor: updatedVendor,
+    });
+  } catch (error) {
+    console.error("Error updating vendor profile:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   createVendor,
   getAllVendor,
   getVendorBySlug,
   getVendorStatus,
   toggleVendorStatus,
+  updateVendorProfile,
 };
