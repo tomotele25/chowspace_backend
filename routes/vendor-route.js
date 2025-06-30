@@ -9,6 +9,7 @@ const {
   updateVendorProfile,
 } = require("../controller/vendor-controller");
 const upload = require("../middleware/upload");
+const protectVendor = require("../middleware/isVendor");
 const protect = require("../middleware/auth");
 
 router.post("/vendor/create", createVendor);
@@ -18,7 +19,7 @@ router.get("/getVendorStatus/:vendorId", getVendorStatus);
 router.put("/vendor/toggleStatus", protect, toggleVendorStatus);
 router.put(
   "/vendor/profile/update",
-  protect,
+  protectVendor,
   upload.single("logo"),
   updateVendorProfile
 );
