@@ -9,12 +9,6 @@ const vendorRoute = require("../routes/vendor-route");
 const productRoute = require("../routes/product-route");
 const managerRoute = require("../routes/manager-route");
 const orderRoute = require("../routes/order-router");
-const startServer = async () => {
-  connectToDb();
-  app.listen(PORT, () => {
-    console.log(`app is running on port : ${PORT}`);
-  });
-};
 
 const allowedOrigins = [
   "http://localhost:3000",
@@ -41,9 +35,24 @@ app.use("/api", vendorRoute);
 app.use("/api", productRoute);
 app.use("/api", managerRoute);
 app.use("/api", orderRoute);
+
 app.get("/", (req, res) => {
   console.log("test reached");
   res.send("Hello world!");
 });
+
+const startServer = async () => {
+  try {
+    await connectToDb(); // await DB connection before starting server
+    app.listen(PORT, () => {
+      console.log(`app is running on port : ${PORT}`);
+    });
+  } catch (error) {
+    console.error("Failed to start server due to DB connection error:", error);
+    process.exit(1);
+  }
+};
+
 startServer();
+
 module.exports = app;

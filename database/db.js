@@ -3,14 +3,15 @@ require("dotenv").config();
 const mongoose = require("mongoose");
 
 const connectToDb = async () => {
-  mongoose
-    .connect(process.env.DB_URL)
-    .then(() => {
-      console.log("MongoDb connected successfully");
-    })
-    .catch((err) => {
-      console.error("connection failed");
+  try {
+    await mongoose.connect(process.env.DB_URL, {
+      connectTimeoutMS: 10000,
+      socketTimeoutMS: 45000,
     });
+    console.log("MongoDB connected successfully");
+  } catch (error) {
+    console.error("MongoDB connection failed:", error);
+  }
 };
 
 module.exports = connectToDb;

@@ -5,6 +5,7 @@ const slugify = require("slugify");
 const Manager = require("../models/manager");
 const cloudinary = require("../utils/cloudinary");
 const multer = require("multer");
+
 const createVendor = async (req, res) => {
   const {
     email,
