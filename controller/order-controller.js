@@ -53,7 +53,6 @@ const verifyPaymentAndCreateOrder = async (req, res) => {
   }
 };
 
-// 2. Charge Bank Account
 const chargeBankAccount = async (req, res) => {
   const {
     account_bank,
@@ -88,7 +87,7 @@ const chargeBankAccount = async (req, res) => {
       email,
       phone_number,
       fullname,
-      redirect_url: "https://chowspace.com/Payment-Redirect", // replace with your frontend route
+      redirect_url: "https://chowspace.com/Payment-Redirect",
     };
 
     const response = await flw.Charge.account(payload);
@@ -115,7 +114,6 @@ const chargeBankAccount = async (req, res) => {
   }
 };
 
-// 3. Create Manual Order (without payment)
 const createOrder = async (req, res) => {
   const {
     items,
@@ -149,7 +147,6 @@ const createOrder = async (req, res) => {
   }
 };
 
-// 4. Get All Orders
 const getAllOrders = async (req, res) => {
   const { vendorId } = req.query;
 
