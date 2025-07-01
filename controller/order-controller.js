@@ -165,7 +165,6 @@ const getAllOrders = async (req, res) => {
   }
 };
 
-// 5. Get Order By ID
 const getOrderById = async (req, res) => {
   const { orderId } = req.params;
 
@@ -180,7 +179,6 @@ const getOrderById = async (req, res) => {
   }
 };
 
-// 6. Update Order Status
 const updateOrderStatus = async (req, res) => {
   const { orderId } = req.params;
   const { status, paymentStatus } = req.body;
@@ -200,7 +198,6 @@ const updateOrderStatus = async (req, res) => {
   }
 };
 
-// 7. Get Manager Orders
 const getManagerOrders = async (req, res) => {
   try {
     const user = req.user;
