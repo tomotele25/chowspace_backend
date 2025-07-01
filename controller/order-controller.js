@@ -1,5 +1,121 @@
+const Flutterwave = require("flutterwave-node-v3");
 const Order = require("../models/order");
 
+const flw = new Flutterwave(
+  process.env.FLW_PUBLIC_KEY,
+  process.env.FLW_SECRET_KEY
+);
+
+// 1. Verify Inline Checkout Payment & Create Order
+const verifyPaymentAndCreateOrder = async (req, res) => {
+  const { reference, orderPayload } = req.body;
+
+  if (!reference || !orderPayload) {
+    return res.status(400).json({
+      success: false,
+      message: "Missing payment reference or order payload.",
+    });
+  }
+
+  try {
+    const result = await flw.Transaction.verify({ id: reference });
+
+    if (
+      result.status === "success" &&
+      result.data.status === "successful" &&
+      result.data.amount >= orderPayload.totalAmount &&
+      result.data.currency === "NGN"
+    ) {
+      const newOrder = await Order.create({
+        ...orderPayload,
+        paymentReference: reference,
+      });
+
+      return res.status(201).json({
+        success: true,
+        order: newOrder,
+        message: "Payment verified and order created.",
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Payment verification failed or was incomplete.",
+        flutterwaveResponse: result,
+      });
+    }
+  } catch (error) {
+    console.error("Payment verification error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error during payment verification.",
+      error: error.message,
+    });
+  }
+};
+
+// 2. Charge Bank Account
+const chargeBankAccount = async (req, res) => {
+  const {
+    account_bank,
+    account_number,
+    amount,
+    email,
+    phone_number,
+    fullname,
+    tx_ref,
+  } = req.body;
+
+  if (
+    !account_bank ||
+    !account_number ||
+    !amount ||
+    !email ||
+    !phone_number ||
+    !fullname
+  ) {
+    return res
+      .status(400)
+      .json({ message: "Missing required bank charge fields." });
+  }
+
+  try {
+    const payload = {
+      tx_ref: tx_ref || `CHOW-${Date.now()}`,
+      amount,
+      account_bank,
+      account_number,
+      currency: "NGN",
+      email,
+      phone_number,
+      fullname,
+      redirect_url: "https://chowspace.com/Payment-Redirect", // replace with your frontend route
+    };
+
+    const response = await flw.Charge.account(payload);
+
+    if (response.status === "success") {
+      return res.status(200).json({
+        success: true,
+        message: "Bank account charge initiated.",
+        data: response.data,
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Bank account charge failed.",
+        data: response,
+      });
+    }
+  } catch (err) {
+    console.error("Bank charge error:", err.response?.data || err.message);
+    return res.status(500).json({
+      message: "Bank charge failed.",
+      error: err.message,
+    });
+  }
+};
+
+// 3. Create Manual Order (without payment)
 const createOrder = async (req, res) => {
   const {
     items,
@@ -33,21 +149,26 @@ const createOrder = async (req, res) => {
   }
 };
 
+// 4. Get All Orders
 const getAllOrders = async (req, res) => {
   const { vendorId } = req.query;
 
   try {
     const query = vendorId ? { vendorId } : {};
     const orders = await Order.find(query).sort({ createdAt: -1 });
-    res
-      .status(200)
-      .json({ success: true, orders, message: "Orders fetched successfully" });
+
+    res.status(200).json({
+      success: true,
+      orders,
+      message: "Orders fetched successfully",
+    });
   } catch (err) {
     console.error("Fetching orders failed:", err);
     res.status(500).json({ message: "Failed to fetch orders." });
   }
 };
 
+// 5. Get Order By ID
 const getOrderById = async (req, res) => {
   const { orderId } = req.params;
 
@@ -62,6 +183,7 @@ const getOrderById = async (req, res) => {
   }
 };
 
+// 6. Update Order Status
 const updateOrderStatus = async (req, res) => {
   const { orderId } = req.params;
   const { status, paymentStatus } = req.body;
@@ -81,6 +203,7 @@ const updateOrderStatus = async (req, res) => {
   }
 };
 
+// 7. Get Manager Orders
 const getManagerOrders = async (req, res) => {
   try {
     const user = req.user;
@@ -111,6 +234,8 @@ const getManagerOrders = async (req, res) => {
 
 module.exports = {
   createOrder,
+  verifyPaymentAndCreateOrder,
+  chargeBankAccount,
   getAllOrders,
   getOrderById,
   updateOrderStatus,
