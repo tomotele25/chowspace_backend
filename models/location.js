@@ -8,10 +8,6 @@ const locationSchema = new mongoose.Schema(
       unique: true,
       trim: true,
     },
-    price: {
-      type: Number,
-      required: true,
-    },
   },
   { timestamps: true }
 );

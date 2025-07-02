@@ -2,7 +2,7 @@ const Location = require("../models/location");
 
 const createLocation = async (req, res) => {
   try {
-    const { location, price } = req.body;
+    const { location } = req.body;
     const existingLocation = await Location.findOne({ location });
     if (existingLocation) {
       return res
@@ -12,7 +12,6 @@ const createLocation = async (req, res) => {
 
     const newLocation = new Location({
       location,
-      price,
     });
 
     await newLocation.save();
@@ -26,4 +25,24 @@ const createLocation = async (req, res) => {
   }
 };
 
-module.exports = createLocation;
+const getLocation = async (req, res) => {
+  try {
+    const locations = await Location.find({}, { location: 1, _id: 0 });
+
+    const locationNames = locations.map((loc) => loc.location);
+
+    res.status(200).json({
+      success: true,
+      message: "Locations fetched successfully",
+      locations: locationNames,
+    });
+  } catch (error) {
+    console.error("Error fetching locations:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
+module.exports = { getLocation, createLocation };
