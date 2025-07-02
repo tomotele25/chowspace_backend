@@ -20,12 +20,26 @@ const verifyPaymentAndCreateOrder = async (req, res) => {
   try {
     const result = await flw.Transaction.verify({ id: reference });
 
-    if (
+    // Flutterwave returns these status values for successful payments
+    const isVerified =
       result.status === "success" &&
       result.data.status === "successful" &&
       result.data.amount >= orderPayload.totalAmount &&
-      result.data.currency === "NGN"
-    ) {
+      result.data.currency === "NGN";
+
+    if (isVerified) {
+      // Optional: Check if order with this reference already exists to avoid duplication
+      const existingOrder = await Order.findOne({
+        paymentReference: reference,
+      });
+      if (existingOrder) {
+        return res.status(200).json({
+          success: true,
+          order: existingOrder,
+          message: "Payment already verified. Returning existing order.",
+        });
+      }
+
       const newOrder = await Order.create({
         ...orderPayload,
         paymentReference: reference,
@@ -34,12 +48,12 @@ const verifyPaymentAndCreateOrder = async (req, res) => {
       return res.status(201).json({
         success: true,
         order: newOrder,
-        message: "Payment verified and order created.",
+        message: "✅ Payment verified and order created successfully.",
       });
     } else {
       return res.status(400).json({
         success: false,
-        message: "Payment verification failed or was incomplete.",
+        message: "❌ Payment verification failed or was incomplete.",
         flutterwaveResponse: result,
       });
     }

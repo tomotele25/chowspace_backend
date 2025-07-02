@@ -9,7 +9,7 @@ const vendorRoute = require("../routes/vendor-route");
 const productRoute = require("../routes/product-route");
 const managerRoute = require("../routes/manager-route");
 const orderRoute = require("../routes/order-router");
-
+const locationRoute = require("../routes/location-route");
 const allowedOrigins = [
   "http://localhost:3000",
   "https://chowspace.vercel.app",
@@ -35,6 +35,7 @@ app.use("/api", vendorRoute);
 app.use("/api", productRoute);
 app.use("/api", managerRoute);
 app.use("/api", orderRoute);
+app.use("/api", locationRoute);
 
 app.get("/", (req, res) => {
   console.log("test reached");
