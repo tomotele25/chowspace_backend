@@ -100,8 +100,10 @@ const createVendor = async (req, res) => {
 
 const getAllVendor = async (req, res) => {
   try {
-    const vendors = await Vendor.find();
-
+    const vendors = await Vendor.find(
+      {},
+      "businessName logo location contact address category status"
+    );
     if (!vendors || vendors.length === 0) {
       return res
         .status(404)
@@ -114,7 +116,7 @@ const getAllVendor = async (req, res) => {
       vendors,
     });
   } catch (error) {
-    console.error("Error fetching vendors:", error.message); // better logging
+    console.error("Error fetching vendors:", error.message);
     return res.status(500).json({
       success: false,
       message: "Server error",
