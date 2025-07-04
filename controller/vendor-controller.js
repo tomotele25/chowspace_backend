@@ -123,6 +123,25 @@ const getAllVendor = async (req, res) => {
   }
 };
 
+const getTotalCountOfVendor = async (req, res) => {
+  try {
+    const totalVendor = await User.countDocuments({ role: "vendor" });
+    if (!totalVendor) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Vendors not found" });
+    }
+    res.status(200).json({
+      success: true,
+      message: "Vendor Fetched Successfully",
+      totalVendor,
+    });
+  } catch (error) {
+    console.error("Unable to fetch total vendor", error.message);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
 // Get Vendor by Slug
 const getVendorBySlug = async (req, res) => {
   try {
@@ -280,6 +299,7 @@ module.exports = {
   createVendor,
   getAllVendor,
   getVendorBySlug,
+  getTotalCountOfVendor,
   getVendorStatus,
   toggleVendorStatus,
   updateVendorProfile,

@@ -31,7 +31,7 @@ const TransactionSchema = new mongoose.Schema({
     default: "pending",
   },
   splitDetails: {
-    type: Object, // optional: can contain vendor split, platform cut, etc.
+    type: Object,
     default: {},
   },
   createdAt: {

@@ -7,12 +7,14 @@ const {
   getVendorStatus,
   toggleVendorStatus,
   updateVendorProfile,
+  getTotalCountOfVendor,
 } = require("../controller/vendor-controller");
 const upload = require("../middleware/upload");
 const protectVendor = require("../middleware/isVendor");
 const protect = require("../middleware/auth");
 
 router.post("/vendor/create", createVendor);
+router.get("/vendor/vendorTotalCount", getTotalCountOfVendor);
 router.get("/vendor/getVendors", getAllVendor);
 router.get("/vendor/:slug", getVendorBySlug);
 router.get("/getVendorStatus/:vendorId", getVendorStatus);
