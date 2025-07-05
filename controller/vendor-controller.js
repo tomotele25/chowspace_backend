@@ -102,7 +102,7 @@ const getAllVendor = async (req, res) => {
   try {
     const vendors = await Vendor.find(
       {},
-      "businessName logo location contact address category status"
+      "businessName logo location contact address category status slug"
     );
     if (!vendors || vendors.length === 0) {
       return res
