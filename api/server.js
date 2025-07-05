@@ -44,12 +44,12 @@ app.get("/", (req, res) => {
 
 const startServer = async () => {
   try {
-    await connectToDb(); // await DB connection before starting server
+    await connectToDb();
     app.listen(PORT, () => {
-      console.log(`app is running on port : ${PORT}`);
+      console.log(`🚀 Server running on port ${PORT}`);
     });
   } catch (error) {
-    console.error("Failed to start server due to DB connection error:", error);
+    console.error("❌ DB connection failed:", error);
     process.exit(1);
   }
 };
