@@ -7,14 +7,12 @@ const signup = async (req, res) => {
   const { fullname, contact, email, password } = req.body;
 
   try {
-    // Check for missing fields
     if (!fullname || !contact || !email || !password) {
       return res
         .status(400)
         .json({ success: false, message: "All fields are required" });
     }
 
-    // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res
@@ -22,7 +20,6 @@ const signup = async (req, res) => {
         .json({ success: false, message: "User already exists" });
     }
 
-    // Hash password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 

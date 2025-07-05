@@ -1,5 +1,6 @@
 const Vendor = require("../models/vendor");
 const User = require("../models/user");
+const Wallet = require("../models/wallet");
 const bcrypt = require("bcrypt");
 const slugify = require("slugify");
 const Manager = require("../models/manager");
@@ -7,19 +8,27 @@ const cloudinary = require("../utils/cloudinary");
 const multer = require("multer");
 
 const createVendor = async (req, res) => {
-  const {
-    email,
-    password,
-    fullname,
-    businessName,
-    contact,
-    logo,
-    location,
-    address,
-    category,
-  } = req.body;
-
   try {
+    const { payload } = req.body;
+
+    if (!payload) {
+      return res.status(400).json({
+        success: false,
+        message: "Payload is missing",
+      });
+    }
+
+    const {
+      password,
+      fullname,
+      businessName,
+      contact,
+      location,
+      address,
+      category,
+      email,
+    } = payload;
+
     if (
       !email ||
       !password ||
@@ -63,14 +72,18 @@ const createVendor = async (req, res) => {
       fullname,
       contact,
       location,
-      logo,
       address,
       category,
       businessName,
       password: hashedPassword,
     });
 
-    // Response
+    const newWallet = await Wallet.create({
+      vendorId: newVendor._id,
+      balance: 0,
+      transactions: [],
+    });
+
     res.status(200).json({
       success: true,
       message: "Account created successfully",
@@ -86,6 +99,8 @@ const createVendor = async (req, res) => {
         businessName: newVendor.businessName,
         slug: newVendor.slug,
         userId: newUser._id,
+        balance: newWallet.balance,
+        transactions: newWallet.transactions,
       },
     });
   } catch (error) {
