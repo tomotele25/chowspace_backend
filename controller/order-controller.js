@@ -41,7 +41,7 @@ const initializeFlutterwavePayment = async (req, res) => {
       tx_ref,
       amount,
       currency: "NGN",
-      redirect_url: "http://chowspace.vercel.app/Payment-Redirect",
+      redirect_url: "https://chowspace.vercel.app/Payment-Redirect",
       customer: { email },
       subaccounts: [
         {
