@@ -77,8 +77,7 @@ const initializeFlutterwavePayment = async (req, res) => {
   }
 };
 
-// 2. Verify payment & update existing order
-const verifyPaymentAndCreateOrder = async (req, res) => {
+const verifyFlutterwavePayment = async (req, res) => {
   const { reference } = req.body;
 
   if (!reference) {
@@ -105,6 +104,7 @@ const verifyPaymentAndCreateOrder = async (req, res) => {
     }
 
     const order = await Order.findOne({ paymentRef: reference });
+
     if (!order) {
       return res.status(404).json({
         success: false,
@@ -122,7 +122,10 @@ const verifyPaymentAndCreateOrder = async (req, res) => {
       order,
     });
   } catch (error) {
-    console.error("Payment verification error:", error);
+    console.error(
+      "Payment verification error:",
+      error.response?.data || error.message
+    );
     return res.status(500).json({
       success: false,
       message: "Server error during payment verification.",
@@ -313,4 +316,5 @@ module.exports = {
   updateOrderStatus,
   initializeFlutterwavePayment,
   getManagerOrders,
+  verifyFlutterwavePayment,
 };
