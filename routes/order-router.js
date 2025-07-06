@@ -1,5 +1,4 @@
 const express = require("express");
-const router = express.Router();
 const {
   createOrder,
   verifyPaymentAndCreateOrder,
@@ -7,12 +6,20 @@ const {
   getAllOrders,
   getOrderById,
   updateOrderStatus,
+  initializeFlutterwavePayment,
   getManagerOrders,
 } = require("../controller/order-controller");
+
 const auth = require("../middleware/auth");
+
+const router = express.Router();
+
 router.post("/orders", createOrder);
 router.post("/verify-payment", verifyPaymentAndCreateOrder);
 router.post("/charge-bank", chargeBankAccount);
+
+router.post("/init-payment", initializeFlutterwavePayment);
+
 router.get("/getAllOrders", getAllOrders);
 router.get("/order/:orderId", getOrderById);
 router.put("/order/:orderId", updateOrderStatus);

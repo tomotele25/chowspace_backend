@@ -1,34 +1,41 @@
 const Vendor = require("../models/vendor");
 const User = require("../models/user");
-const Wallet = require("../models/wallet");
 const bcrypt = require("bcrypt");
 const slugify = require("slugify");
 const Manager = require("../models/manager");
-const cloudinary = require("../utils/cloudinary");
-const multer = require("multer");
+const Wallet = require("../models/wallet");
+const axios = require("axios");
+const Order = require("../models/order");
+const FLW_SECRET_KEY = process.env.FLW_SECRET_KEY;
+
+const BANK_CODES = {
+  "Access Bank": "044",
+  GTBank: "058",
+  "Zenith Bank": "057",
+  "First Bank": "011",
+  UBA: "033",
+  Opay: "999991",
+  Paycom: "999991",
+};
+
+const getBankCode = (bankName) => {
+  return BANK_CODES[bankName] || null;
+};
 
 const createVendor = async (req, res) => {
+  const {
+    password,
+    fullname,
+    businessName,
+    contact,
+    logo,
+    location,
+    address,
+    category,
+    email,
+  } = req.body;
+
   try {
-    const { payload } = req.body;
-
-    if (!payload) {
-      return res.status(400).json({
-        success: false,
-        message: "Payload is missing",
-      });
-    }
-
-    const {
-      password,
-      fullname,
-      businessName,
-      contact,
-      location,
-      address,
-      category,
-      email,
-    } = payload;
-
     if (
       !email ||
       !password ||
@@ -72,13 +79,14 @@ const createVendor = async (req, res) => {
       fullname,
       contact,
       location,
+      logo,
       address,
       category,
       businessName,
       password: hashedPassword,
     });
 
-    const newWallet = await Wallet.create({
+    await Wallet.create({
       vendorId: newVendor._id,
       balance: 0,
       transactions: [],
@@ -99,8 +107,6 @@ const createVendor = async (req, res) => {
         businessName: newVendor.businessName,
         slug: newVendor.slug,
         userId: newUser._id,
-        balance: newWallet.balance,
-        transactions: newWallet.transactions,
       },
     });
   } catch (error) {
@@ -117,7 +123,7 @@ const getAllVendor = async (req, res) => {
   try {
     const vendors = await Vendor.find(
       {},
-      "businessName logo location contact address category status slug"
+      "businessName logo location contact address category status slug accountNumber bankName subaccountId"
     );
     if (!vendors || vendors.length === 0) {
       return res
@@ -140,26 +146,6 @@ const getAllVendor = async (req, res) => {
   }
 };
 
-const getTotalCountOfVendor = async (req, res) => {
-  try {
-    const totalVendor = await User.countDocuments({ role: "vendor" });
-    if (!totalVendor) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Vendors not found" });
-    }
-    res.status(200).json({
-      success: true,
-      message: "Vendor Fetched Successfully",
-      totalVendor,
-    });
-  } catch (error) {
-    console.error("Unable to fetch total vendor", error.message);
-    res.status(500).json({ success: false, message: "Server Error" });
-  }
-};
-
-// Get Vendor by Slug
 const getVendorBySlug = async (req, res) => {
   try {
     const vendor = await Vendor.findOne({ slug: req.params.slug });
@@ -170,6 +156,48 @@ const getVendorBySlug = async (req, res) => {
   } catch (err) {
     console.error("Error fetching vendor by slug:", err);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+const getVendorStatus = async (req, res) => {
+  const { vendorId } = req.params;
+
+  if (!vendorId) {
+    return res
+      .status(400)
+      .json({ success: false, message: "vendorId is required" });
+  }
+
+  try {
+    const vendor = await Vendor.findById(vendorId).select("status");
+    if (!vendor) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Vendor not found" });
+    }
+    res.status(200).json({ success: true, status: vendor.status });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+const getTotalCountOfVendor = async (req, res) => {
+  try {
+    const totalVendor = await User.countDocuments({ role: "vendor" });
+    if (!totalVendor && totalVendor !== 0) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Vendors not found" });
+    }
+    res.status(200).json({
+      success: true,
+      message: "Vendor count fetched successfully",
+      totalVendor,
+    });
+  } catch (error) {
+    console.error("Unable to fetch total vendor", error.message);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
@@ -221,29 +249,6 @@ const toggleVendorStatus = async (req, res) => {
   }
 };
 
-const getVendorStatus = async (req, res) => {
-  const { vendorId } = req.params;
-
-  if (!vendorId) {
-    return res
-      .status(400)
-      .json({ success: false, message: "vendorId is required" });
-  }
-
-  try {
-    const vendor = await Vendor.findById(vendorId).select("status");
-    if (!vendor) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Vendor not found" });
-    }
-    res.status(200).json({ success: true, status: vendor.status });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
 const updateVendorProfile = async (req, res) => {
   try {
     const user = req.user;
@@ -258,7 +263,15 @@ const updateVendorProfile = async (req, res) => {
     const vendorId = user.vendorId;
     const userId = user._id;
 
-    const { businessName, contact, location, address, password } = req.body;
+    const {
+      businessName,
+      contact,
+      location,
+      address,
+      password,
+      accountNumber,
+      bankName,
+    } = req.body;
 
     const vendorUpdateData = {
       businessName,
@@ -279,32 +292,81 @@ const updateVendorProfile = async (req, res) => {
       vendorUpdateData.logo = req.file.path;
     }
 
-    // Update vendor profile
-    const updatedVendor = await Vendor.findByIdAndUpdate(
-      vendorId,
-      vendorUpdateData,
-      { new: true }
-    );
-
-    if (!updatedVendor) {
+    const vendor = await Vendor.findById(vendorId);
+    if (!vendor) {
       return res.status(404).json({
         success: false,
         message: "Vendor not found",
       });
     }
 
+    const needsSubaccount = !vendor.accountNumber && accountNumber && bankName;
+
+    if (needsSubaccount) {
+      const bankCode = getBankCode(bankName);
+      if (!bankCode) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid bank name provided",
+        });
+      }
+
+      try {
+        console.log("🔧 Creating Flutterwave subaccount...");
+        const flwResponse = await axios.post(
+          "https://api.flutterwave.com/v3/subaccounts",
+          {
+            account_bank: bankCode,
+            account_number: accountNumber,
+            business_name: businessName,
+            business_email: vendor.email,
+            split_type: "percentage",
+            split_value: 0.9,
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${FLW_SECRET_KEY}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        const { subaccount_id } = flwResponse.data.data;
+
+        vendorUpdateData.accountNumber = accountNumber;
+        vendorUpdateData.bankName = bankName;
+        vendorUpdateData.subaccountId = subaccount_id;
+      } catch (err) {
+        console.error(
+          "❌ Flutterwave subaccount error:",
+          err.response?.data || err.message
+        );
+        return res.status(500).json({
+          success: false,
+          message: "Failed to create Flutterwave subaccount",
+          error: err.response?.data || err.message,
+        });
+      }
+    }
+
+    const updatedVendor = await Vendor.findByIdAndUpdate(
+      vendorId,
+      vendorUpdateData,
+      { new: true }
+    );
+
     if (password) {
       await User.findByIdAndUpdate(userId, userUpdateData);
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Profile updated successfully",
       vendor: updatedVendor,
     });
   } catch (error) {
-    console.error("Error updating vendor profile:", error);
-    res.status(500).json({
+    console.error("🔥 Error updating vendor profile:", error);
+    return res.status(500).json({
       success: false,
       message: "Something went wrong",
       error: error.message,
@@ -316,8 +378,8 @@ module.exports = {
   createVendor,
   getAllVendor,
   getVendorBySlug,
-  getTotalCountOfVendor,
   getVendorStatus,
+  getTotalCountOfVendor,
   toggleVendorStatus,
   updateVendorProfile,
 };

@@ -1,62 +1,126 @@
 const Flutterwave = require("flutterwave-node-v3");
+const axios = require("axios");
 const Order = require("../models/order");
+const Vendor = require("../models/vendor");
 
 const flw = new Flutterwave(
   process.env.FLW_PUBLIC_KEY,
   process.env.FLW_SECRET_KEY
 );
 
-// 1. Verify Inline Checkout Payment & Create Order
-const verifyPaymentAndCreateOrder = async (req, res) => {
-  const { reference, orderPayload } = req.body;
+// 1. Init payment & create pending order
+const initializeFlutterwavePayment = async (req, res) => {
+  try {
+    const { amount, email, vendorId, tx_ref, orderPayload } = req.body;
 
-  if (!reference || !orderPayload) {
+    if (!amount || !email || !vendorId || !tx_ref || !orderPayload) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields",
+      });
+    }
+
+    const vendor = await Vendor.findById(vendorId);
+    if (!vendor || !vendor.subaccountId) {
+      return res.status(400).json({
+        success: false,
+        message: "Vendor not found or missing subaccount",
+      });
+    }
+
+    // Save order with pending status
+    const newOrder = new Order({
+      ...orderPayload,
+      vendorId,
+      paymentStatus: "pending",
+      paymentRef: tx_ref,
+    });
+    await newOrder.save();
+
+    const paymentPayload = {
+      tx_ref,
+      amount,
+      currency: "NGN",
+      redirect_url: "https://chowspace.com/payment-success",
+      customer: { email },
+      subaccounts: [
+        {
+          id: vendor.subaccountId,
+          transaction_charge_type: "flat",
+          transaction_charge: 100,
+        },
+      ],
+    };
+
+    const response = await axios.post(
+      "https://api.flutterwave.com/v3/payments",
+      paymentPayload,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.FLW_SECRET_KEY}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Payment initialized and order saved",
+      paymentLink: response.data.data.link,
+    });
+  } catch (error) {
+    console.error("Init error:", error.response?.data || error.message);
+    res.status(500).json({
+      success: false,
+      message: "Failed to initialize payment",
+    });
+  }
+};
+
+// 2. Verify payment & update existing order
+const verifyPaymentAndCreateOrder = async (req, res) => {
+  const { reference } = req.body;
+
+  if (!reference) {
     return res.status(400).json({
       success: false,
-      message: "Missing payment reference or order payload.",
+      message: "Missing payment reference.",
     });
   }
 
   try {
     const result = await flw.Transaction.verify({ id: reference });
 
-    // Flutterwave returns these status values for successful payments
     const isVerified =
       result.status === "success" &&
       result.data.status === "successful" &&
-      result.data.amount >= orderPayload.totalAmount &&
       result.data.currency === "NGN";
 
-    if (isVerified) {
-      // Optional: Check if order with this reference already exists to avoid duplication
-      const existingOrder = await Order.findOne({
-        paymentReference: reference,
-      });
-      if (existingOrder) {
-        return res.status(200).json({
-          success: true,
-          order: existingOrder,
-          message: "Payment already verified. Returning existing order.",
-        });
-      }
-
-      const newOrder = await Order.create({
-        ...orderPayload,
-        paymentReference: reference,
-      });
-
-      return res.status(201).json({
-        success: true,
-        order: newOrder,
-        message: "✅ Payment verified and order created successfully.",
-      });
-    } else {
+    if (!isVerified) {
       return res.status(400).json({
         success: false,
         message: "❌ Payment verification failed or was incomplete.",
         flutterwaveResponse: result,
       });
     }
+
+    const order = await Order.findOne({ paymentRef: reference });
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found for this payment reference.",
+      });
+    }
+
+    order.paymentStatus = "paid";
+    order.paymentReference = reference;
+    await order.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "✅ Payment verified and order updated.",
+      order,
+    });
   } catch (error) {
     console.error("Payment verification error:", error);
     return res.status(500).json({
@@ -101,7 +165,7 @@ const chargeBankAccount = async (req, res) => {
       email,
       phone_number,
       fullname,
-      redirect_url: "https://chowspace.com/Payment-Redirect",
+      redirect_url: "http://chowspace.vercel.app/Payment-Redirect",
     };
 
     const response = await flw.Charge.account(payload);
@@ -247,5 +311,6 @@ module.exports = {
   getAllOrders,
   getOrderById,
   updateOrderStatus,
+  initializeFlutterwavePayment,
   getManagerOrders,
 };

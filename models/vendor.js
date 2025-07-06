@@ -15,7 +15,7 @@ const vendorSchema = new mongoose.Schema(
       type: String,
       required: true,
       lowercase: true,
-      unique: true, //
+      unique: true,
     },
     fullname: {
       type: String,
@@ -53,6 +53,19 @@ const vendorSchema = new mongoose.Schema(
       type: String,
       enum: ["opened", "closed"],
       default: "closed",
+    },
+
+    accountNumber: {
+      type: String,
+      default: null,
+    },
+    bankName: {
+      type: String,
+      default: null,
+    },
+    subaccountId: {
+      type: String,
+      default: null,
     },
   },
   { timestamps: true }
