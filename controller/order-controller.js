@@ -309,7 +309,7 @@ const getManagerOrders = async (req, res) => {
 
 module.exports = {
   createOrder,
-  verifyPaymentAndCreateOrder,
+
   chargeBankAccount,
   getAllOrders,
   getOrderById,
