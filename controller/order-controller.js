@@ -8,14 +8,16 @@ const flw = new Flutterwave(
   process.env.FLW_SECRET_KEY
 );
 
+// 1. Init payment & create pending order
 const initializeFlutterwavePayment = async (req, res) => {
   try {
-    const { amount, email, vendorId, tx_ref } = req.body;
+    const { amount, email, vendorId, tx_ref, orderPayload } = req.body;
 
-    if (!amount || !email || !vendorId || !tx_ref) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Missing required fields" });
+    if (!amount || !email || !vendorId || !tx_ref || !orderPayload) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields",
+      });
     }
 
     const vendor = await Vendor.findById(vendorId);
@@ -54,24 +56,25 @@ const initializeFlutterwavePayment = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Payment initialized",
+      message: "Payment initialized and order saved",
       paymentLink: response.data.data.link,
     });
   } catch (error) {
     console.error("Init error:", error.response?.data || error.message);
-    res
-      .status(500)
-      .json({ success: false, message: "Failed to initialize payment" });
+    res.status(500).json({
+      success: false,
+      message: "Failed to initialize payment",
+    });
   }
 };
 
 const verifyPaymentAndCreateOrder = async (req, res) => {
-  const { reference, orderPayload } = req.body;
+  const { reference } = req.body;
 
-  if (!reference || !orderPayload) {
+  if (!reference) {
     return res.status(400).json({
       success: false,
-      message: "Missing payment reference or order data.",
+      message: "Missing payment reference.",
     });
   }
 
@@ -91,30 +94,25 @@ const verifyPaymentAndCreateOrder = async (req, res) => {
       });
     }
 
-    const txRef = result.data.tx_ref;
+    const txRef = result.data.tx_ref; // ✅ This matches what was saved as `paymentRef`
 
-    // Check if order already exists (avoid duplicate creation)
-    const existingOrder = await Order.findOne({ paymentRef: txRef });
-    if (existingOrder) {
-      return res.status(200).json({
-        success: true,
-        message: "Order already exists.",
-        order: existingOrder,
+    const order = await Order.findOne({ paymentRef: txRef });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found for this payment reference.",
       });
     }
 
-    // Create the order now that payment is verified
-    const newOrder = await Order.create({
-      ...orderPayload,
-      paymentStatus: "paid",
-      paymentRef: txRef,
-      paymentReference: reference, // Flutterwave numeric ID
-    });
+    order.paymentStatus = "paid";
+    order.paymentReference = reference;
+    await order.save();
 
     return res.status(200).json({
       success: true,
-      message: "✅ Payment verified and order created.",
-      order: newOrder,
+      message: "✅ Payment verified and order updated.",
+      order,
     });
   } catch (error) {
     console.error(
