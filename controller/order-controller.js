@@ -8,7 +8,6 @@ const flw = new Flutterwave(
   process.env.FLW_SECRET_KEY
 );
 
-// 1. Init payment & create pending order
 const initializeFlutterwavePayment = async (req, res) => {
   try {
     const { amount, email, vendorId, tx_ref, orderPayload } = req.body;
@@ -28,6 +27,19 @@ const initializeFlutterwavePayment = async (req, res) => {
       });
     }
 
+    // 💾 Save a pending order first
+    const pendingOrder = await Order.create({
+      vendorId,
+      items: orderPayload.items,
+      guestInfo: orderPayload.guestInfo,
+      deliveryMethod: orderPayload.deliveryMethod,
+      note: orderPayload.note || "",
+      totalAmount: amount,
+      paymentRef: tx_ref, // 🔐 This MUST match what Flutterwave sends back
+      paymentStatus: "pending",
+    });
+
+    // 🔁 Prepare payment
     const paymentPayload = {
       tx_ref,
       amount,
@@ -58,6 +70,7 @@ const initializeFlutterwavePayment = async (req, res) => {
       success: true,
       message: "Payment initialized and order saved",
       paymentLink: response.data.data.link,
+      orderId: pendingOrder._id,
     });
   } catch (error) {
     console.error("Init error:", error.response?.data || error.message);
