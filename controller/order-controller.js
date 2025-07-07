@@ -77,7 +77,7 @@ const initializeFlutterwavePayment = async (req, res) => {
   }
 };
 
-const verifyFlutterwavePayment = async (req, res) => {
+const verifyPaymentAndCreateOrder = async (req, res) => {
   const { reference } = req.body;
 
   if (!reference) {
@@ -103,7 +103,9 @@ const verifyFlutterwavePayment = async (req, res) => {
       });
     }
 
-    const order = await Order.findOne({ paymentRef: reference });
+    const txRef = result.data.tx_ref; // ✅ This matches what was saved as `paymentRef`
+
+    const order = await Order.findOne({ paymentRef: txRef });
 
     if (!order) {
       return res.status(404).json({
@@ -113,7 +115,7 @@ const verifyFlutterwavePayment = async (req, res) => {
     }
 
     order.paymentStatus = "paid";
-    order.paymentReference = reference;
+    order.paymentReference = reference; // (This is the numeric transaction ID)
     await order.save();
 
     return res.status(200).json({
@@ -309,12 +311,11 @@ const getManagerOrders = async (req, res) => {
 
 module.exports = {
   createOrder,
-
   chargeBankAccount,
   getAllOrders,
   getOrderById,
   updateOrderStatus,
   initializeFlutterwavePayment,
   getManagerOrders,
-  verifyFlutterwavePayment,
+  verifyPaymentAndCreateOrder,
 };

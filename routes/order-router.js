@@ -7,7 +7,7 @@ const {
   updateOrderStatus,
   initializeFlutterwavePayment,
   getManagerOrders,
-  verifyFlutterwavePayment,
+  verifyPaymentAndCreateOrder,
 } = require("../controller/order-controller");
 
 const auth = require("../middleware/auth");
@@ -15,7 +15,7 @@ const auth = require("../middleware/auth");
 const router = express.Router();
 
 router.post("/orders", createOrder);
-router.post("/verify-payment", verifyFlutterwavePayment);
+router.post("/verify-payment", verifyPaymentAndCreateOrder);
 router.post("/charge-bank", chargeBankAccount);
 
 router.post("/init-payment", initializeFlutterwavePayment);
