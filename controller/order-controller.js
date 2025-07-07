@@ -2,7 +2,7 @@ const Flutterwave = require("flutterwave-node-v3");
 const axios = require("axios");
 const Order = require("../models/order");
 const Vendor = require("../models/vendor");
-
+const Wallet = require("../models/wallet");
 const flw = new Flutterwave(
   process.env.FLW_PUBLIC_KEY,
   process.env.FLW_SECRET_KEY
@@ -107,7 +107,8 @@ const verifyPaymentAndCreateOrder = async (req, res) => {
       });
     }
 
-    const txRef = result.data.tx_ref; // ✅ This matches what was saved as `paymentRef`
+    const txRef = result.data.tx_ref;
+    const amountPaid = parseFloat(result.data.amount);
 
     const order = await Order.findOne({ paymentRef: txRef });
 
@@ -122,9 +123,23 @@ const verifyPaymentAndCreateOrder = async (req, res) => {
     order.paymentReference = reference;
     await order.save();
 
+    const wallet = await Wallet.findOne({ vendorId: order.vendorId });
+
+    if (wallet) {
+      wallet.balance += amountPaid;
+      wallet.transactions.unshift({
+        type: "credit",
+        amount: amountPaid,
+        description: `Payment from customer - Order #${order._id}`,
+      });
+      await wallet.save();
+    } else {
+      console.warn(`⚠️ Wallet not found for vendor ${order.vendorId}`);
+    }
+
     return res.status(200).json({
       success: true,
-      message: "✅ Payment verified and order updated.",
+      message: "✅ Payment verified, order updated, and wallet credited.",
       order,
     });
   } catch (error) {

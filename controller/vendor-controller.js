@@ -374,6 +374,38 @@ const updateVendorProfile = async (req, res) => {
   }
 };
 
+const getVendorWallet = async (req, res) => {
+  try {
+    const vendorId = req.user.vendorId;
+
+    if (!vendorId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Vendor ID not provided" });
+    }
+
+    const wallet = await Wallet.findOne({ vendorId });
+
+    if (!wallet) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Wallet not found for this vendor" });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Wallet successfully fetched",
+      wallet,
+    });
+  } catch (error) {
+    console.error("Could not fetch wallet:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching wallet",
+    });
+  }
+};
+
 module.exports = {
   createVendor,
   getAllVendor,
@@ -382,4 +414,5 @@ module.exports = {
   getTotalCountOfVendor,
   toggleVendorStatus,
   updateVendorProfile,
+  getVendorWallet,
 };
