@@ -8,6 +8,7 @@ const {
   initializeFlutterwavePayment,
   getManagerOrders,
   verifyPaymentAndCreateOrder,
+  cleanupPendingOrders,
 } = require("../controller/order-controller");
 
 const auth = require("../middleware/auth");
@@ -24,5 +25,5 @@ router.get("/getAllOrders", getAllOrders);
 router.get("/order/:orderId", getOrderById);
 router.put("/order/:orderId", updateOrderStatus);
 router.get("/manager/orders", auth, getManagerOrders);
-
+router.delete("/cleanupPendingOrders", cleanupPendingOrders);
 module.exports = router;

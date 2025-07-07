@@ -300,6 +300,29 @@ const getManagerOrders = async (req, res) => {
   }
 };
 
+const cleanupPendingOrders = async (req, res) => {
+  try {
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+
+    const result = await Order.deleteMany({
+      paymentStatus: "pending",
+      createdAt: { $lt: tenMinutesAgo },
+    });
+
+    res.status(200).json({
+      success: true,
+      deletedCount: result.deletedCount,
+      message: "Old pending orders cleaned up.",
+    });
+  } catch (err) {
+    console.error("Cleanup failed:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to cleanup pending orders.",
+    });
+  }
+};
+
 module.exports = {
   createOrder,
   chargeBankAccount,
@@ -309,4 +332,5 @@ module.exports = {
   initializeFlutterwavePayment,
   getManagerOrders,
   verifyPaymentAndCreateOrder,
+  cleanupPendingOrders,
 };
