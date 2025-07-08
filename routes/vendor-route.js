@@ -18,7 +18,7 @@ router.post("/vendor/create", createVendor);
 router.get("/vendor/vendorTotalCount", getTotalCountOfVendor);
 router.get("/vendor/getVendors", getAllVendor);
 router.get("/vendor/:slug", getVendorBySlug);
-router.get("/getVendorStatus/:vendorId", getVendorStatus);
+router.get("/getVendorStatus", protect, getVendorStatus);
 router.get("/getVendorWallet", protectVendor, getVendorWallet);
 router.put("/vendor/toggleStatus", protect, toggleVendorStatus);
 router.put(

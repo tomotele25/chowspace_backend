@@ -160,24 +160,40 @@ const getVendorBySlug = async (req, res) => {
 };
 
 const getVendorStatus = async (req, res) => {
-  const { vendorId } = req.params;
-
-  if (!vendorId) {
-    return res
-      .status(400)
-      .json({ success: false, message: "vendorId is required" });
-  }
-
   try {
+    const user = req.user;
+
+    let vendorId;
+
+    if (req.params.vendorId) {
+      vendorId = req.params.vendorId;
+    } else if (user.role === "vendor") {
+      vendorId = user._id;
+    } else if (user.role === "manager") {
+      if (!user.vendorId) {
+        return res.status(404).json({
+          success: false,
+          message: "Manager is not linked to a vendor",
+        });
+      }
+      vendorId = user.vendorId;
+    } else {
+      return res
+        .status(403)
+        .json({ success: false, message: "Unauthorized role" });
+    }
+
     const vendor = await Vendor.findById(vendorId).select("status");
+
     if (!vendor) {
       return res
         .status(404)
         .json({ success: false, message: "Vendor not found" });
     }
+
     res.status(200).json({ success: true, status: vendor.status });
-  } catch (error) {
-    console.error(error);
+  } catch (err) {
+    console.error("Error fetching vendor status:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
