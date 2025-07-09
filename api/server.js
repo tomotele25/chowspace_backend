@@ -4,12 +4,14 @@ const app = express();
 const PORT = 2005;
 const connectToDb = require("../database/db");
 const cors = require("cors");
+
 const authRoute = require("../routes/auth-route");
 const vendorRoute = require("../routes/vendor-route");
 const productRoute = require("../routes/product-route");
 const managerRoute = require("../routes/manager-route");
 const orderRoute = require("../routes/order-router");
 const locationRoute = require("../routes/location-route");
+
 const allowedOrigins = [
   "http://localhost:3000",
   "https://chowspace.vercel.app",
@@ -30,13 +32,6 @@ app.use(
   })
 );
 
-app.use("/api", authRoute);
-app.use("/api", vendorRoute);
-app.use("/api", productRoute);
-app.use("/api", managerRoute);
-app.use("/api", orderRoute);
-app.use("/api", locationRoute);
-
 app.get("/", (req, res) => {
   console.log("test reached");
   res.send("Hello world!");
@@ -45,6 +40,14 @@ app.get("/", (req, res) => {
 const startServer = async () => {
   try {
     await connectToDb();
+
+    app.use("/api", authRoute);
+    app.use("/api", vendorRoute);
+    app.use("/api", productRoute);
+    app.use("/api", managerRoute);
+    app.use("/api", orderRoute);
+    app.use("/api", locationRoute);
+
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });
