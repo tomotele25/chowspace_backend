@@ -10,12 +10,19 @@ const FLW_SECRET_KEY = process.env.FLW_SECRET_KEY;
 
 const BANK_CODES = {
   "Access Bank": "044",
-  GTBank: "058",
-  "Zenith Bank": "057",
+  EcoBank: "050",
+  "Fidelity Bank": "070",
   "First Bank": "011",
-  UBA: "033",
+  "Guaranty Trust Bank": "058",
+  "Kuda Microfinance Bank": "50211",
+  "Moniepoint MFB": "50515",
   Opay: "999991",
   Paycom: "999991",
+  Palmpay: "999992",
+  "Stanbic IBTC Bank": "221",
+  UBA: "033",
+  "Union Bank": "032",
+  "Zenith Bank": "057",
 };
 
 const getBankCode = (bankName) => {
