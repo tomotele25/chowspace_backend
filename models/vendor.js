@@ -17,6 +17,7 @@ const vendorSchema = new mongoose.Schema(
       lowercase: true,
       unique: true,
     },
+
     fullname: {
       type: String,
       required: true,

@@ -198,6 +198,31 @@ const getVendorStatus = async (req, res) => {
   }
 };
 
+const getVendorStatusById = async (req, res) => {
+  try {
+    const vendorId = req.params.vendorId;
+
+    if (!vendorId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Vendor ID is required" });
+    }
+
+    const vendor = await Vendor.findById(vendorId).select("status");
+
+    if (!vendor) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Vendor not found" });
+    }
+
+    res.status(200).json({ success: true, status: vendor.status });
+  } catch (error) {
+    console.error("Error fetching vendor status:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 const getTotalCountOfVendor = async (req, res) => {
   try {
     const totalVendor = await User.countDocuments({ role: "vendor" });
@@ -428,6 +453,7 @@ module.exports = {
   getVendorBySlug,
   getVendorStatus,
   getTotalCountOfVendor,
+  getVendorStatusById,
   toggleVendorStatus,
   updateVendorProfile,
   getVendorWallet,

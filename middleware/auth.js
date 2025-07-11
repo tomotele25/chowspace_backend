@@ -20,7 +20,6 @@ const authMiddleware = async (req, res, next) => {
       return res.status(401).json({ message: "User not found" });
     }
 
-    // 💡 If user is a manager, find their vendor
     if (user.role === "manager") {
       const manager = await Manager.findOne({ user: user._id });
       if (manager) {
