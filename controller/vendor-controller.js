@@ -6,7 +6,6 @@ const Manager = require("../models/manager");
 const Wallet = require("../models/wallet");
 const axios = require("axios");
 const Order = require("../models/order");
-const FLW_SECRET_KEY = process.env.FLW_SECRET_KEY;
 
 const BANK_CODES = {
   "Access Bank": "044",
@@ -300,16 +299,14 @@ const toggleVendorStatus = async (req, res) => {
 const updateVendorProfile = async (req, res) => {
   try {
     const user = req.user;
+    if (!user?.vendorId)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
 
-    if (!user || !user.vendorId) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized: vendorId not found",
-      });
-    }
-
-    const vendorId = user.vendorId;
-    const userId = user._id;
+    const vendor = await Vendor.findById(user.vendorId);
+    if (!vendor)
+      return res
+        .status(404)
+        .json({ success: false, message: "Vendor not found" });
 
     const {
       businessName,
@@ -320,108 +317,56 @@ const updateVendorProfile = async (req, res) => {
       accountNumber,
       bankName,
     } = req.body;
-
-    const vendorUpdateData = {
-      businessName,
-      contact,
-      location,
-      address,
-    };
-
-    const userUpdateData = {};
+    const vendorUpdate = { businessName, contact, location, address };
+    const userUpdate = {};
 
     if (password) {
       const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(password, salt);
-      userUpdateData.password = hashedPassword;
+      userUpdate.password = await bcrypt.hash(password, salt);
     }
 
-    if (req.file) {
-      vendorUpdateData.logo = req.file.path;
-    }
-
-    const vendor = await Vendor.findById(vendorId);
-    if (!vendor) {
-      return res.status(404).json({
-        success: false,
-        message: "Vendor not found",
-      });
-    }
-
-    const needsSubaccount = !vendor.accountNumber && accountNumber && bankName;
-
-    if (needsSubaccount) {
+    const needsSub = !vendor.subaccountId && accountNumber && bankName;
+    if (needsSub) {
       const bankCode = getBankCode(bankName);
-      if (!bankCode) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid bank name provided",
-        });
-      }
+      if (!bankCode)
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid bank name" });
 
-      try {
-        console.log("🔧 Creating Flutterwave subaccount...");
-        const flwResponse = await axios.post(
-          "https://api.flutterwave.com/v3/subaccounts",
-          {
-            account_bank: bankCode,
-            account_number: accountNumber,
-            business_name: businessName,
-            business_email: vendor.email,
-            split_type: "percentage",
-            split_value: 0.9,
+      const paystackRes = await axios.post(
+        "https://api.paystack.co/subaccount",
+        {
+          business_name: businessName,
+          settlement_bank: bankCode,
+          account_number: accountNumber,
+          percentage_charge: 0,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
           },
-          {
-            headers: {
-              Authorization: `Bearer ${FLW_SECRET_KEY}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
+        }
+      );
 
-        const { subaccount_id } = flwResponse.data.data;
-
-        vendorUpdateData.accountNumber = accountNumber;
-        vendorUpdateData.bankName = bankName;
-        vendorUpdateData.subaccountId = subaccount_id;
-      } catch (err) {
-        console.error(
-          "❌ Flutterwave subaccount error:",
-          err.response?.data || err.message
-        );
-        return res.status(500).json({
-          success: false,
-          message: "Failed to create Flutterwave subaccount",
-          error: err.response?.data || err.message,
-        });
-      }
+      vendorUpdate.accountNumber = accountNumber;
+      vendorUpdate.bankName = bankName;
+      vendorUpdate.subaccountId = paystackRes.data.data.subaccount_code;
     }
 
     const updatedVendor = await Vendor.findByIdAndUpdate(
-      vendorId,
-      vendorUpdateData,
+      user.vendorId,
+      vendorUpdate,
       { new: true }
     );
-
-    if (password) {
-      await User.findByIdAndUpdate(userId, userUpdateData);
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "Profile updated successfully",
-      vendor: updatedVendor,
-    });
-  } catch (error) {
-    console.error("🔥 Error updating vendor profile:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Something went wrong",
-      error: error.message,
-    });
+    if (password) await User.findByIdAndUpdate(user._id, userUpdate);
+    return res.json({ success: true, vendor: updatedVendor });
+  } catch (err) {
+    console.error("Update vendor error", err);
+    return res
+      .status(500)
+      .json({ success: false, message: "Server error", error: err.message });
   }
 };
-
 const getVendorWallet = async (req, res) => {
   try {
     const vendorId = req.user.vendorId;

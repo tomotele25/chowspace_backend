@@ -16,7 +16,19 @@ const initializePaystackPayment = async (req, res) => {
       });
     }
 
-    // Save a pending order
+    // Fetch vendor to get subaccount ID
+    const vendor = await Vendor.findById(vendorId);
+    if (!vendor || !vendor.subaccountId) {
+      return res.status(400).json({
+        success: false,
+        message: "Vendor or subaccount not found",
+      });
+    }
+
+    // Deduct ₦100 from amount to retain as platform fee
+    const amountToVendor = amount - 100;
+
+    // Save the pending order
     const pendingOrder = await Order.create({
       vendorId,
       items: orderPayload.items,
@@ -28,12 +40,21 @@ const initializePaystackPayment = async (req, res) => {
       paymentStatus: "pending",
     });
 
-    // Prepare Paystack payload
     const payload = {
       email,
-      amount: amount * 100,
+      amount: totalAmount * 100,
       reference: tx_ref,
       callback_url: "https://chowspace.vercel.app/Payment-Redirect",
+      split: {
+        type: "flat",
+        bearer_type: "account",
+        subaccounts: [
+          {
+            subaccount: vendor.subaccountId,
+            share: (totalAmount - 100) * 100,
+          },
+        ],
+      },
     };
 
     const response = await axios.post(
@@ -47,7 +68,7 @@ const initializePaystackPayment = async (req, res) => {
       }
     );
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Payment initialized and order saved",
       paymentLink: response.data.data.authorization_url,
@@ -55,7 +76,7 @@ const initializePaystackPayment = async (req, res) => {
     });
   } catch (error) {
     console.error("Init error:", error.response?.data || error.message);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Failed to initialize payment",
       error: error.message,
