@@ -1,14 +1,10 @@
-const Flutterwave = require("flutterwave-node-v3");
 const axios = require("axios");
 const Order = require("../models/order");
 const Vendor = require("../models/vendor");
 const Wallet = require("../models/wallet");
-const flw = new Flutterwave(
-  process.env.FLW_PUBLIC_KEY,
-  process.env.FLW_SECRET_KEY
-);
 
-const initializeFlutterwavePayment = async (req, res) => {
+// INITIATE PAYMENT WITH PAYSTACK
+const initializePaystackPayment = async (req, res) => {
   try {
     const { amount, email, vendorId, tx_ref, orderPayload } = req.body;
 
@@ -19,15 +15,7 @@ const initializeFlutterwavePayment = async (req, res) => {
       });
     }
 
-    const vendor = await Vendor.findById(vendorId);
-    if (!vendor || !vendor.subaccountId) {
-      return res.status(400).json({
-        success: false,
-        message: "Vendor not found or missing subaccount",
-      });
-    }
-
-    // 💾 Save a pending order first
+    // Save a pending order
     const pendingOrder = await Order.create({
       vendorId,
       items: orderPayload.items,
@@ -35,32 +23,24 @@ const initializeFlutterwavePayment = async (req, res) => {
       deliveryMethod: orderPayload.deliveryMethod,
       note: orderPayload.note || "",
       totalAmount: amount,
-      paymentRef: tx_ref, // 🔐 This MUST match what Flutterwave sends back
+      paymentRef: tx_ref,
       paymentStatus: "pending",
     });
 
-    // 🔁 Prepare payment
-    const paymentPayload = {
-      tx_ref,
-      amount,
-      currency: "NGN",
-      redirect_url: "https://chowspace.vercel.app/Payment-Redirect",
-      customer: { email },
-      subaccounts: [
-        {
-          id: vendor.subaccountId,
-          transaction_charge_type: "flat",
-          transaction_charge: 100,
-        },
-      ],
+    // Prepare Paystack payload
+    const payload = {
+      email,
+      amount: amount * 100,
+      reference: tx_ref,
+      callback_url: "https://chowspace.vercel.app/Payment-Redirect",
     };
 
     const response = await axios.post(
-      "https://api.flutterwave.com/v3/payments",
-      paymentPayload,
+      "https://api.paystack.co/transaction/initialize",
+      payload,
       {
         headers: {
-          Authorization: `Bearer ${process.env.FLW_SECRET_KEY}`,
+          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
           "Content-Type": "application/json",
         },
       }
@@ -69,7 +49,7 @@ const initializeFlutterwavePayment = async (req, res) => {
     res.status(200).json({
       success: true,
       message: "Payment initialized and order saved",
-      paymentLink: response.data.data.link,
+      paymentLink: response.data.data.authorization_url,
       orderId: pendingOrder._id,
     });
   } catch (error) {
@@ -77,54 +57,55 @@ const initializeFlutterwavePayment = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to initialize payment",
+      error: error.message,
     });
   }
 };
 
-const verifyPaymentAndCreateOrder = async (req, res) => {
+// VERIFY PAYMENT AND CREDIT VENDOR WALLET
+const verifyPaystackPayment = async (req, res) => {
   const { reference } = req.body;
 
   if (!reference) {
-    return res.status(400).json({
-      success: false,
-      message: "Missing payment reference.",
-    });
+    return res
+      .status(400)
+      .json({ success: false, message: "Missing reference" });
   }
 
   try {
-    const result = await flw.Transaction.verify({ id: reference });
+    const result = await axios.get(
+      `https://api.paystack.co/transaction/verify/${reference}`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+        },
+      }
+    );
 
-    const isVerified =
-      result.status === "success" &&
-      result.data.status === "successful" &&
-      result.data.currency === "NGN";
-
-    if (!isVerified) {
+    const data = result.data.data;
+    if (!data || data.status !== "success") {
       return res.status(400).json({
         success: false,
-        message: "❌ Payment verification failed or was incomplete.",
-        flutterwaveResponse: result,
+        message: "❌ Payment verification failed.",
+        data,
       });
     }
 
-    const txRef = result.data.tx_ref;
-    const amountPaid = parseFloat(result.data.amount);
+    const txRef = data.reference;
+    const amountPaid = data.amount / 100;
 
     const order = await Order.findOne({ paymentRef: txRef });
-
     if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found for this payment reference.",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found." });
     }
 
     order.paymentStatus = "paid";
-    order.paymentReference = reference;
+    order.paymentReference = txRef;
     await order.save();
 
     const wallet = await Wallet.findOne({ vendorId: order.vendorId });
-
     if (wallet) {
       wallet.balance += amountPaid;
       wallet.transactions.unshift({
@@ -133,8 +114,6 @@ const verifyPaymentAndCreateOrder = async (req, res) => {
         description: `Payment from customer - Order #${order._id}`,
       });
       await wallet.save();
-    } else {
-      console.warn(`⚠️ Wallet not found for vendor ${order.vendorId}`);
     }
 
     return res.status(200).json({
@@ -143,79 +122,16 @@ const verifyPaymentAndCreateOrder = async (req, res) => {
       order,
     });
   } catch (error) {
-    console.error(
-      "Payment verification error:",
-      error.response?.data || error.message
-    );
+    console.error("Verify error:", error.response?.data || error.message);
     return res.status(500).json({
       success: false,
-      message: "Server error during payment verification.",
+      message: "Error verifying payment",
       error: error.message,
     });
   }
 };
 
-const chargeBankAccount = async (req, res) => {
-  const {
-    account_bank,
-    account_number,
-    amount,
-    email,
-    phone_number,
-    fullname,
-    tx_ref,
-  } = req.body;
-
-  if (
-    !account_bank ||
-    !account_number ||
-    !amount ||
-    !email ||
-    !phone_number ||
-    !fullname
-  ) {
-    return res
-      .status(400)
-      .json({ message: "Missing required bank charge fields." });
-  }
-
-  try {
-    const payload = {
-      tx_ref: tx_ref || `CHOW-${Date.now()}`,
-      amount,
-      account_bank,
-      account_number,
-      currency: "NGN",
-      email,
-      phone_number,
-      fullname,
-      redirect_url: "http://chowspace.vercel.app/Payment-Redirect",
-    };
-
-    const response = await flw.Charge.account(payload);
-
-    if (response.status === "success") {
-      return res.status(200).json({
-        success: true,
-        message: "Bank account charge initiated.",
-        data: response.data,
-      });
-    } else {
-      return res.status(400).json({
-        success: false,
-        message: "Bank account charge failed.",
-        data: response,
-      });
-    }
-  } catch (err) {
-    console.error("Bank charge error:", err.response?.data || err.message);
-    return res.status(500).json({
-      message: "Bank charge failed.",
-      error: err.message,
-    });
-  }
-};
-
+// MANUAL ORDER CREATION (IF NEEDED)
 const createOrder = async (req, res) => {
   const {
     items,
@@ -249,6 +165,7 @@ const createOrder = async (req, res) => {
   }
 };
 
+// GET ALL ORDERS (OPTIONALLY BY VENDOR)
 const getAllOrders = async (req, res) => {
   const { vendorId } = req.query;
 
@@ -267,6 +184,7 @@ const getAllOrders = async (req, res) => {
   }
 };
 
+// GET SINGLE ORDER
 const getOrderById = async (req, res) => {
   const { orderId } = req.params;
 
@@ -281,6 +199,7 @@ const getOrderById = async (req, res) => {
   }
 };
 
+// UPDATE ORDER STATUS
 const updateOrderStatus = async (req, res) => {
   const { orderId } = req.params;
   const { status, paymentStatus } = req.body;
@@ -300,6 +219,7 @@ const updateOrderStatus = async (req, res) => {
   }
 };
 
+// MANAGER ORDERS ONLY
 const getManagerOrders = async (req, res) => {
   try {
     const user = req.user;
@@ -328,6 +248,7 @@ const getManagerOrders = async (req, res) => {
   }
 };
 
+// DELETE OLD PENDING ORDERS
 const cleanupPendingOrders = async (req, res) => {
   try {
     const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
@@ -352,13 +273,12 @@ const cleanupPendingOrders = async (req, res) => {
 };
 
 module.exports = {
+  initializePaystackPayment,
+  verifyPaystackPayment,
   createOrder,
-  chargeBankAccount,
   getAllOrders,
   getOrderById,
   updateOrderStatus,
-  initializeFlutterwavePayment,
   getManagerOrders,
-  verifyPaymentAndCreateOrder,
   cleanupPendingOrders,
 };
