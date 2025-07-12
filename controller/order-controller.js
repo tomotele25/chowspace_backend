@@ -1,3 +1,4 @@
+require("dotenv").config();
 const axios = require("axios");
 const Order = require("../models/order");
 const Vendor = require("../models/vendor");
