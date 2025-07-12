@@ -66,12 +66,6 @@ const initializePaystackPayment = async (req, res) => {
 const verifyPaystackPayment = async (req, res) => {
   const { reference } = req.body;
 
-  if (!reference) {
-    return res
-      .status(400)
-      .json({ success: false, message: "Missing reference" });
-  }
-
   try {
     const result = await axios.get(
       `https://api.paystack.co/transaction/verify/${reference}`,
@@ -83,51 +77,45 @@ const verifyPaystackPayment = async (req, res) => {
     );
 
     const data = result.data.data;
-    if (!data || data.status !== "success") {
-      return res.status(400).json({
-        success: false,
-        message: "❌ Payment verification failed.",
-        data,
-      });
+
+    if (data.status !== "success") {
+      return res
+        .status(400)
+        .json({ success: false, message: "Payment failed", data });
     }
 
-    const txRef = data.reference;
-    const amountPaid = data.amount / 100;
-
-    const order = await Order.findOne({ paymentRef: txRef });
+    const order = await Order.findOne({ paymentRef: reference });
     if (!order) {
       return res
         .status(404)
-        .json({ success: false, message: "Order not found." });
+        .json({ success: false, message: "Order not found" });
     }
 
-    order.paymentStatus = "paid";
-    order.paymentReference = txRef;
-    await order.save();
+    // Update payment status
+    if (order.paymentStatus !== "paid") {
+      order.paymentStatus = "paid";
+      await order.save();
+    }
 
+    // Credit wallet, etc...
     const wallet = await Wallet.findOne({ vendorId: order.vendorId });
     if (wallet) {
+      const amountPaid = data.amount / 100;
       wallet.balance += amountPaid;
       wallet.transactions.unshift({
         type: "credit",
         amount: amountPaid,
-        description: `Payment from customer - Order #${order._id}`,
+        description: `Order #${order._id} - Payment via Paystack`,
       });
       await wallet.save();
     }
 
-    return res.status(200).json({
-      success: true,
-      message: "✅ Payment verified, order updated, and wallet credited.",
-      order,
-    });
-  } catch (error) {
-    console.error("Verify error:", error.response?.data || error.message);
-    return res.status(500).json({
-      success: false,
-      message: "Error verifying payment",
-      error: error.message,
-    });
+    return res
+      .status(200)
+      .json({ success: true, message: "Payment verified", order });
+  } catch (err) {
+    console.error("Verify error", err.response?.data || err.message);
+    res.status(500).json({ success: false, message: "Internal error" });
   }
 };
 
