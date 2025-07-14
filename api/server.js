@@ -11,7 +11,7 @@ const productRoute = require("../routes/product-route");
 const managerRoute = require("../routes/manager-route");
 const orderRoute = require("../routes/order-router");
 const locationRoute = require("../routes/location-route");
-
+const disputeRoute = require("../routes/dispute-route");
 const allowedOrigins = [
   "http://localhost:3000",
   "https://chowspace.vercel.app",
@@ -47,6 +47,7 @@ const startServer = async () => {
     app.use("/api", managerRoute);
     app.use("/api", orderRoute);
     app.use("/api", locationRoute);
+    app.use("/api", disputeRoute);
 
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);

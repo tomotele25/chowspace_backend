@@ -282,6 +282,10 @@ const cleanupPendingOrders = async (req, res) => {
   }
 };
 
+const orderDispute = async (req, res) => {
+  const { orderId } = req.body;
+};
+
 module.exports = {
   initializePaystackPayment,
   verifyPaystackPayment,
