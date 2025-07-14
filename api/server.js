@@ -1,5 +1,6 @@
 require("dotenv").config();
 const express = require("express");
+const rateLimit = require("express-rate-limit");
 const app = express();
 const PORT = 2005;
 const connectToDb = require("../database/db");
@@ -12,6 +13,7 @@ const managerRoute = require("../routes/manager-route");
 const orderRoute = require("../routes/order-router");
 const locationRoute = require("../routes/location-route");
 const disputeRoute = require("../routes/dispute-route");
+
 const allowedOrigins = [
   "http://localhost:3000",
   "https://chowspace.vercel.app",
@@ -19,6 +21,7 @@ const allowedOrigins = [
 
 app.use(express.json());
 
+// CORS setup
 app.use(
   cors({
     origin: function (origin, callback) {
@@ -32,6 +35,15 @@ app.use(
   })
 );
 
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  message: {
+    status: 429,
+    error: "Too many requests from this IP. Please try again later.",
+  },
+});
+app.use("/api", globalLimiter);
+
 app.get("/", (req, res) => {
   console.log("test reached");
   res.send("Hello world!");
@@ -40,7 +52,6 @@ app.get("/", (req, res) => {
 const startServer = async () => {
   try {
     await connectToDb();
-
     app.use("/api", authRoute);
     app.use("/api", vendorRoute);
     app.use("/api", productRoute);
