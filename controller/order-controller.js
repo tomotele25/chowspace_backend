@@ -25,7 +25,7 @@ const initializePaystackPayment = async (req, res) => {
       });
     }
 
-    const PLATFORM_SUBACCOUNT = "ACCT_wmfyl7el4y1sqwh";
+    const PLATFORM_SUBACCOUNT = "ACCT_yhrice77plofu5o";
 
     const amountToVendor = amount - 100;
 
