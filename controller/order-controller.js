@@ -42,7 +42,7 @@ const initializePaystackPayment = async (req, res) => {
 
     const payload = {
       email,
-      amount: totalAmount * 100,
+      amount: amount * 100,
       reference: tx_ref,
       callback_url: "https://chowspace.vercel.app/Payment-Redirect",
       split: {
@@ -51,7 +51,7 @@ const initializePaystackPayment = async (req, res) => {
         subaccounts: [
           {
             subaccount: vendor.subaccountId,
-            share: (totalAmount - 100) * 100,
+            share: amountToVendor * 100,
           },
         ],
       },
@@ -280,10 +280,6 @@ const cleanupPendingOrders = async (req, res) => {
       message: "Failed to cleanup pending orders.",
     });
   }
-};
-
-const orderDispute = async (req, res) => {
-  const { orderId } = req.body;
 };
 
 module.exports = {
