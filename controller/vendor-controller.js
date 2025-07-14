@@ -317,12 +317,17 @@ const updateVendorProfile = async (req, res) => {
       accountNumber,
       bankName,
     } = req.body;
+
     const vendorUpdate = { businessName, contact, location, address };
     const userUpdate = {};
 
     if (password) {
       const salt = await bcrypt.genSalt(10);
       userUpdate.password = await bcrypt.hash(password, salt);
+    }
+
+    if (req.file && req.file.path) {
+      vendorUpdate.logo = req.file.path;
     }
 
     const needsSub = !vendor.subaccountId && accountNumber && bankName;
@@ -358,13 +363,17 @@ const updateVendorProfile = async (req, res) => {
       vendorUpdate,
       { new: true }
     );
+
     if (password) await User.findByIdAndUpdate(user._id, userUpdate);
+
     return res.json({ success: true, vendor: updatedVendor });
   } catch (err) {
     console.error("Update vendor error", err);
-    return res
-      .status(500)
-      .json({ success: false, message: "Server error", error: err.message });
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: err.message,
+    });
   }
 };
 const getVendorWallet = async (req, res) => {
