@@ -5,7 +5,6 @@ const Vendor = require("../models/vendor");
 const Wallet = require("../models/wallet");
 
 // INITIATE PAYMENT WITH PAYSTACK
-const PLATFORM_SUBACCOUNT = "ACCT_yhrice77plofu5o";
 const initializePaystackPayment = async (req, res) => {
   try {
     const { amount, email, vendorId, tx_ref, orderPayload } = req.body;
@@ -14,14 +13,6 @@ const initializePaystackPayment = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Missing required fields",
-      });
-    }
-
-    if (amount < 101) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Minimum transaction amount is ₦101 to support ₦100 flat platform fee",
       });
     }
 
@@ -34,7 +25,7 @@ const initializePaystackPayment = async (req, res) => {
       });
     }
 
-    // Save pending order before payment
+    // Save the pending order
     const pendingOrder = await Order.create({
       vendorId,
       items: orderPayload.items,
@@ -46,39 +37,12 @@ const initializePaystackPayment = async (req, res) => {
       paymentStatus: "pending",
     });
 
-    // 💰 Convert to kobo once, then subtract 100 flat fee (10,000 kobo)
-    const amountKobo = Math.round(Number(amount) * 100);
-    const platformFeeKobo = 10000;
-    const vendorShareKobo = amountKobo - platformFeeKobo;
-
-    if (vendorShareKobo <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Amount too low to split ₦100 platform fee.",
-      });
-    }
-
-    const split = {
-      type: "flat",
-      bearer_type: "account", // vendor pays Paystack fee
-      subaccounts: [
-        {
-          subaccount: vendor.subaccountId,
-          share: vendorShareKobo,
-        },
-        {
-          subaccount: PLATFORM_SUBACCOUNT,
-          share: platformFeeKobo,
-        },
-      ],
-    };
-
     const payload = {
       email,
-      amount: amountKobo,
+      amount: Math.round(Number(amount) * 100),
       reference: tx_ref,
       callback_url: "https://chowspace.vercel.app/Payment-Redirect",
-      split,
+      subaccount: vendor.subaccountId,
     };
 
     const response = await axios.post(
