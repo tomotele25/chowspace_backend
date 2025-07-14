@@ -5,6 +5,7 @@ const Vendor = require("../models/vendor");
 const Wallet = require("../models/wallet");
 
 // INITIATE PAYMENT WITH PAYSTACK
+const PLATFORM_SUBACCOUNT = "ACCT_yhrice77plofu5o";
 const initializePaystackPayment = async (req, res) => {
   try {
     const { amount, email, vendorId, tx_ref, orderPayload } = req.body;
@@ -13,6 +14,14 @@ const initializePaystackPayment = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Missing required fields",
+      });
+    }
+
+    if (amount < 101) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Minimum transaction amount is ₦101 to support ₦100 flat platform fee",
       });
     }
 
@@ -25,11 +34,7 @@ const initializePaystackPayment = async (req, res) => {
       });
     }
 
-    const PLATFORM_SUBACCOUNT = "ACCT_yhrice77plofu5o";
-
-    const amountToVendor = amount - 100;
-
-    // Save the pending order in DB
+    // Save pending order before payment
     const pendingOrder = await Order.create({
       vendorId,
       items: orderPayload.items,
@@ -41,29 +46,31 @@ const initializePaystackPayment = async (req, res) => {
       paymentStatus: "pending",
     });
 
-    // Prepare Paystack transaction payload
-    const payload = {
-      email,
-      amount: amount * 100, // in kobo
-      reference: tx_ref,
-      callback_url: "https://chowspace.vercel.app/Payment-Redirect",
-      split: {
-        type: "flat",
-        bearer_type: "account",
-        subaccounts: [
-          {
-            subaccount: vendor.subaccountId,
-            share: amountToVendor * 100, // e.g., ₦4,900
-          },
-          {
-            subaccount: PLATFORM_SUBACCOUNT,
-            share: 10000, // ₦100
-          },
-        ],
-      },
+    const amountToVendor = amount - 100;
+
+    const split = {
+      type: "flat",
+      bearer_type: "account", // vendor pays Paystack fee
+      subaccounts: [
+        {
+          subaccount: vendor.subaccountId,
+          share: amountToVendor * 100,
+        },
+        {
+          subaccount: PLATFORM_SUBACCOUNT,
+          share: 10000, // ₦100 in kobo
+        },
+      ],
     };
 
-    // Send to Paystack
+    const payload = {
+      email,
+      amount: amount * 100, // Convert to kobo
+      reference: tx_ref,
+      callback_url: "https://chowspace.vercel.app/Payment-Redirect",
+      split,
+    };
+
     const response = await axios.post(
       "https://api.paystack.co/transaction/initialize",
       payload,
@@ -86,7 +93,7 @@ const initializePaystackPayment = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to initialize payment",
-      error: error.message,
+      error: error.response?.data || error.message,
     });
   }
 };
