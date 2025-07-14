@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const rateLimit = require("express-rate-limit");
 const app = express();
+app.set("trust proxy", 1);
 const PORT = 2005;
 const connectToDb = require("../database/db");
 const cors = require("cors");
@@ -37,6 +38,7 @@ app.use(
 
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
+  max: 100,
   message: {
     status: 429,
     error: "Too many requests from this IP. Please try again later.",
