@@ -46,7 +46,17 @@ const initializePaystackPayment = async (req, res) => {
       paymentStatus: "pending",
     });
 
-    const amountToVendor = amount - 100;
+    // 💰 Convert to kobo once, then subtract 100 flat fee (10,000 kobo)
+    const amountKobo = Math.round(Number(amount) * 100);
+    const platformFeeKobo = 10000;
+    const vendorShareKobo = amountKobo - platformFeeKobo;
+
+    if (vendorShareKobo <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Amount too low to split ₦100 platform fee.",
+      });
+    }
 
     const split = {
       type: "flat",
@@ -54,18 +64,18 @@ const initializePaystackPayment = async (req, res) => {
       subaccounts: [
         {
           subaccount: vendor.subaccountId,
-          share: amountToVendor * 100,
+          share: vendorShareKobo,
         },
         {
           subaccount: PLATFORM_SUBACCOUNT,
-          share: 10000, // ₦100 in kobo
+          share: platformFeeKobo,
         },
       ],
     };
 
     const payload = {
       email,
-      amount: amount * 100, // Convert to kobo
+      amount: amountKobo,
       reference: tx_ref,
       callback_url: "https://chowspace.vercel.app/Payment-Redirect",
       split,
