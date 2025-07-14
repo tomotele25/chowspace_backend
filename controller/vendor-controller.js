@@ -15,7 +15,7 @@ const BANK_CODES = {
   "Guaranty Trust Bank": "058",
   "Kuda Microfinance Bank": "50211",
   "Moniepoint MFB": "50515",
-  "Opay Digital Services Limited": "999991",
+  "Opay Digital Services Limited (OPay)": "999991",
   Paycom: "999991",
   Palmpay: "999992",
   "Stanbic IBTC Bank": "221",
@@ -339,7 +339,7 @@ const updateVendorProfile = async (req, res) => {
           business_name: businessName,
           settlement_bank: bankCode,
           account_number: accountNumber,
-          percentage_charge: 98,
+          percentage_charge: 5,
         },
         {
           headers: {
