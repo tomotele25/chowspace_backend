@@ -25,10 +25,11 @@ const initializePaystackPayment = async (req, res) => {
       });
     }
 
-    // Deduct ₦100 from amount to retain as platform fee
+    const PLATFORM_SUBACCOUNT = "ACCT_wmfyl7el4y1sqwh";
+
     const amountToVendor = amount - 100;
 
-    // Save the pending order
+    // Save the pending order in DB
     const pendingOrder = await Order.create({
       vendorId,
       items: orderPayload.items,
@@ -40,9 +41,10 @@ const initializePaystackPayment = async (req, res) => {
       paymentStatus: "pending",
     });
 
+    // Prepare Paystack transaction payload
     const payload = {
       email,
-      amount: amount * 100,
+      amount: amount * 100, // in kobo
       reference: tx_ref,
       callback_url: "https://chowspace.vercel.app/Payment-Redirect",
       split: {
@@ -51,12 +53,17 @@ const initializePaystackPayment = async (req, res) => {
         subaccounts: [
           {
             subaccount: vendor.subaccountId,
-            share: amountToVendor * 100,
+            share: amountToVendor * 100, // e.g., ₦4,900
+          },
+          {
+            subaccount: PLATFORM_SUBACCOUNT,
+            share: 10000, // ₦100
           },
         ],
       },
     };
 
+    // Send to Paystack
     const response = await axios.post(
       "https://api.paystack.co/transaction/initialize",
       payload,

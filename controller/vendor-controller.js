@@ -15,7 +15,7 @@ const BANK_CODES = {
   "Guaranty Trust Bank": "058",
   "Kuda Microfinance Bank": "50211",
   "Moniepoint MFB": "50515",
-  Opay: "999991",
+  "Opay Digital Services Limited": "999991",
   Paycom: "999991",
   Palmpay: "999992",
   "Stanbic IBTC Bank": "221",
