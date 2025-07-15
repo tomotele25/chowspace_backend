@@ -316,9 +316,16 @@ const updateVendorProfile = async (req, res) => {
       password,
       accountNumber,
       bankName,
+      deliveryDuration,
     } = req.body;
 
-    const vendorUpdate = { businessName, contact, location, address };
+    const vendorUpdate = {
+      businessName,
+      contact,
+      location,
+      address,
+      deliveryDuration,
+    };
     const userUpdate = {};
 
     if (password) {

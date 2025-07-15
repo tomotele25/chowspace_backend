@@ -68,6 +68,10 @@ const vendorSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    deliveryDuration: {
+      type: Number,
+      required: true,
+    },
   },
   { timestamps: true }
 );
