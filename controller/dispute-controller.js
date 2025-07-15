@@ -65,4 +65,19 @@ const getVendorDisputes = async (req, res) => {
   }
 };
 
-module.exports = { getVendorDisputes, createOrderDispute };
+const getDisputeReasons = (req, res) => {
+  const reasons = [
+    "Order not delivered on time",
+    "Order never arrived",
+    "Incomplete order",
+    "Wrong items delivered",
+    "Food was spoiled or bad",
+    "Packaging was damaged or leaking",
+    "Other",
+  ];
+  res
+    .status(200)
+    .json({ success: true, message: "Reasons fetched successfully", reasons });
+};
+
+module.exports = { getVendorDisputes, createOrderDispute, getDisputeReasons };
