@@ -25,7 +25,7 @@ const createOrderDispute = async (req, res) => {
     }
 
     const newDispute = new Dispute({
-      reasons,
+      reason: reasons,
       message,
       order: orderId,
     });
