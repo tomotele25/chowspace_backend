@@ -3,6 +3,7 @@ const axios = require("axios");
 const Order = require("../models/order");
 const Vendor = require("../models/vendor");
 const Wallet = require("../models/wallet");
+const { orderConfirmationEmail } = require("../mailer");
 
 // INITIATE PAYMENT WITH PAYSTACK
 const initializePaystackPayment = async (req, res) => {
@@ -105,6 +106,15 @@ const verifyPaystackPayment = async (req, res) => {
     if (order.paymentStatus !== "paid") {
       order.paymentStatus = "paid";
       await order.save();
+    }
+
+    try {
+      await orderConfirmationEmail(
+        order.guestInfo.email,
+        "Your Chowspace Order Has Been Confirmed 🎉"
+      );
+    } catch (emailError) {
+      console.error("Failed to send confirmation email:", emailError.message);
     }
 
     // Credit wallet, etc...
