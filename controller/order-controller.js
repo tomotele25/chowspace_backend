@@ -8,7 +8,8 @@ const orderConfirmationEmail = require("../mailer");
 // INITIATE PAYMENT WITH PAYSTACK
 const initializePaystackPayment = async (req, res) => {
   try {
-    const { amount, email, vendorId, tx_ref, orderPayload } = req.body;
+    const { amount, email, vendorId, tx_ref, orderPayload, guestInfo } =
+      req.body;
 
     if (!amount || !email || !vendorId || !tx_ref || !orderPayload) {
       return res.status(400).json({
@@ -30,7 +31,7 @@ const initializePaystackPayment = async (req, res) => {
     const pendingOrder = await Order.create({
       vendorId,
       items: orderPayload.items,
-      guestInfo: orderPayload.guestInfo,
+      guestInfo,
       deliveryMethod: orderPayload.deliveryMethod,
       note: orderPayload.note || "",
       totalAmount: amount,
@@ -100,6 +101,13 @@ const verifyPaystackPayment = async (req, res) => {
       return res
         .status(404)
         .json({ success: false, message: "Order not found" });
+    }
+
+    if (data.amount !== order.totalAmount * 100) {
+      return res.status(400).json({
+        success: false,
+        message: "Amount mismatch. Payment not valid.",
+      });
     }
 
     // Update payment status
