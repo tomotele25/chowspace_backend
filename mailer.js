@@ -53,6 +53,4 @@ const orderConfirmationEmail = async (to, subject) => {
   }
 };
 
-module.exports = {
-  orderConfirmationEmail,
-};
+module.exports = orderConfirmationEmail;
