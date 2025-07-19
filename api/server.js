@@ -2,11 +2,13 @@ require("dotenv").config();
 const express = require("express");
 const rateLimit = require("express-rate-limit");
 const app = express();
-app.set("trust proxy", 1);
+app.set("trust proxy", 1); // Trust first proxy
+
 const PORT = 2005;
 const connectToDb = require("../database/db");
 const cors = require("cors");
 
+// Import routes
 const authRoute = require("../routes/auth-route");
 const vendorRoute = require("../routes/vendor-route");
 const productRoute = require("../routes/product-route");
@@ -15,12 +17,11 @@ const orderRoute = require("../routes/order-router");
 const locationRoute = require("../routes/location-route");
 const disputeRoute = require("../routes/dispute-route");
 
+// Allowed CORS origins
 const allowedOrigins = [
   "http://localhost:3000",
   "https://chowspace.vercel.app",
 ];
-
-app.use(express.json());
 
 // CORS setup
 app.use(
@@ -29,31 +30,45 @@ app.use(
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        callback(new Error("Origin is not allowed"));
+        callback(new Error("Origin not allowed"));
       }
     },
     credentials: true,
   })
 );
 
-const globalLimiter = rateLimit({
+app.use(express.json());
+
+const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 20,
   message: {
     status: 429,
-    error: "Too many requests from this IP. Please try again later.",
+    error: "Too many auth requests. Please try again later.",
   },
 });
-app.use("/api", globalLimiter);
+
+const orderLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 300,
+  message: {
+    status: 429,
+    error: "Too many order fetches. Please try again shortly.",
+  },
+});
 
 app.get("/", (req, res) => {
-  console.log("test reached");
+  console.log("Test route hit");
   res.send("Hello world!");
 });
 
 const startServer = async () => {
   try {
     await connectToDb();
+
+    app.use("/api/auth", authLimiter);
+    app.use("/api/orders", orderLimiter);
+
     app.use("/api", authRoute);
     app.use("/api", vendorRoute);
     app.use("/api", productRoute);
