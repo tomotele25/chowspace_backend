@@ -9,12 +9,13 @@ const {
   getVendorStatusById,
   updateVendorProfile,
   getTotalCountOfVendor,
+  rateVendor,
   getVendorWallet,
 } = require("../controller/vendor-controller");
 const upload = require("../middleware/upload");
 const protectVendor = require("../middleware/isVendor");
 const protect = require("../middleware/auth");
-
+const verifyCustomer = require("../middleware/customers");
 router.post("/vendor/create", createVendor);
 router.get("/vendor/vendorTotalCount", getTotalCountOfVendor);
 router.get("/vendor/getVendors", getAllVendor);
@@ -30,4 +31,5 @@ router.put(
   upload.single("logo"),
   updateVendorProfile
 );
+router.post("/rateVendor", verifyCustomer, rateVendor);
 module.exports = router;

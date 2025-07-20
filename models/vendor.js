@@ -72,6 +72,15 @@ const vendorSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    ratings: [
+      {
+        customerId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        stars: { type: Number, min: 1, max: 5 },
+        comment: { type: String },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
+    averageRating: { type: Number, default: 0 },
   },
   { timestamps: true }
 );

@@ -458,6 +458,47 @@ const getVendorDailyIncome = async (req, res) => {
   }
 };
 
+const rateVendor = async (req, res) => {
+  const { vendorId, comment, stars } = req.body;
+  const customerId = req.user;
+
+  if (!stars || stars < 1 || stars > 5) {
+    return res.status(400).json({ message: "Invalid star rating." });
+  }
+
+  const vendor = await Vendor.findById(vendorId);
+  if (!vendor) return res.status(404).json({ message: "Vendor not found." });
+
+  const existingRating = vendor.ratings.find(
+    (r) => r.customerId.toString() === customerId
+  );
+  if (existingRating) {
+    return res
+      .status(400)
+      .json({ message: "You've already rated this vendor." });
+  }
+
+  const hasOrdered = await Order.findOne({
+    customerId,
+    vendorId,
+    status: "completed",
+  });
+  if (!hasOrdered) {
+    return res
+      .status(403)
+      .json({ message: "Only verified customers can rate." });
+  }
+
+  vendor.ratings.push({ customerId, stars, comment });
+
+  vendor.averageRating =
+    vendor.ratings.reduce((sum, r) => sum + r.stars, 0) / vendor.ratings.length;
+
+  await vendor.save();
+
+  return res.status(200).json({ message: "Rating submitted successfully." });
+};
+
 module.exports = {
   createVendor,
   getAllVendor,
@@ -469,4 +510,5 @@ module.exports = {
   toggleVendorStatus,
   updateVendorProfile,
   getVendorWallet,
+  rateVendor,
 };
