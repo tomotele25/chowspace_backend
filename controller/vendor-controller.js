@@ -129,7 +129,7 @@ const getAllVendor = async (req, res) => {
   try {
     const vendors = await Vendor.find(
       {},
-      "businessName fullname email logo location contact address category status slug accountNumber bankName subaccountId deliveryDuration"
+      "businessName averageRating fullname email logo location contact address category status slug accountNumber bankName subaccountId deliveryDuration"
     );
     if (!vendors || vendors.length === 0) {
       return res
