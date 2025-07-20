@@ -129,7 +129,7 @@ const getAllVendor = async (req, res) => {
   try {
     const vendors = await Vendor.find(
       {},
-      "businessName logo location contact address category status slug accountNumber bankName subaccountId deliveryDuration"
+      "businessName fullname email logo location contact address category status slug accountNumber bankName subaccountId deliveryDuration"
     );
     if (!vendors || vendors.length === 0) {
       return res
@@ -478,17 +478,6 @@ const rateVendor = async (req, res) => {
       .json({ message: "You've already rated this vendor." });
   }
 
-  const hasOrdered = await Order.findOne({
-    customerId,
-    vendorId,
-    status: "completed",
-  });
-  if (!hasOrdered) {
-    return res
-      .status(403)
-      .json({ message: "Only verified customers can rate." });
-  }
-
   vendor.ratings.push({ customerId, stars, comment });
 
   vendor.averageRating =
@@ -497,6 +486,12 @@ const rateVendor = async (req, res) => {
   await vendor.save();
 
   return res.status(200).json({ message: "Rating submitted successfully." });
+};
+
+const getReviews = async (req, res) => {
+  try {
+    const reviews = await Vendor.find({}, ratings);
+  } catch (error) {}
 };
 
 module.exports = {

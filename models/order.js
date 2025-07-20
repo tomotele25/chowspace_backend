@@ -14,6 +14,10 @@ const orderSchema = new mongoose.Schema(
       address: String,
       email: String,
     },
+    customerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Customer",
+    },
     deliveryMethod: String,
     note: String,
     totalAmount: Number,

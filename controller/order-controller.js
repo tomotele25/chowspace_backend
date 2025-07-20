@@ -39,6 +39,13 @@ const initializePaystackPayment = async (req, res) => {
       paymentStatus: "pending",
     });
 
+    if (guestInfo) {
+      pendingOrder.guestInfo = guestInfo;
+    }
+
+    if (req.body.customerId) {
+      pendingOrder.customerId = req.body.customerId;
+    }
     const payload = {
       email,
       amount: Math.round(Number(amount) * 100),
