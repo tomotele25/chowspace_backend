@@ -460,7 +460,7 @@ const getVendorDailyIncome = async (req, res) => {
 
 const rateVendor = async (req, res) => {
   const { vendorId, comment, stars } = req.body;
-  const customerId = req.user;
+  const customerId = req.user._id;
 
   if (!stars || stars < 1 || stars > 5) {
     return res.status(400).json({ message: "Invalid star rating." });
