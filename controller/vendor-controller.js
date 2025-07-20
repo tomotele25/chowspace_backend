@@ -481,7 +481,7 @@ const rateVendor = async (req, res) => {
   const hasOrdered = await Order.findOne({
     customerId,
     vendorId,
-    status: "completed",
+    paymentStatus: "paid",
   });
   if (!hasOrdered) {
     return res
