@@ -3,6 +3,7 @@ const bcrypt = require("bcrypt");
 const User = require("../models/user");
 const jwt = require("jsonwebtoken");
 const Vendor = require("../models/vendor");
+const { sendSignupEmail } = require("../mailer");
 const signup = async (req, res) => {
   const { fullname, contact, email, password } = req.body;
 
@@ -32,7 +33,11 @@ const signup = async (req, res) => {
     });
 
     await newUser.save();
-
+    try {
+      await sendSignupEmail(email, fullname);
+    } catch (err) {
+      console.error("Email failed:", err);
+    }
     res.status(201).json({
       success: true,
       message: "User created successfully",

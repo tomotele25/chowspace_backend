@@ -3,7 +3,7 @@ const axios = require("axios");
 const Order = require("../models/order");
 const Vendor = require("../models/vendor");
 const Wallet = require("../models/wallet");
-const orderConfirmationEmail = require("../mailer");
+const { orderConfirmationEmail } = require("../mailer");
 
 // INITIATE PAYMENT WITH PAYSTACK
 const initializePaystackPayment = async (req, res) => {
