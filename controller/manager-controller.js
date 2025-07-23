@@ -90,8 +90,40 @@ const getManagersWithStatus = async (req, res) => {
   }
 };
 
+const updateProfile = async (req, res) => {
+  try {
+    const managerId = req.params.managerId;
+    const { fullname, email, newPassword } = req.body;
+
+    const manager = await User.findById(managerId);
+    if (!manager || manager.role !== "manager") {
+      return res
+        .status(404)
+        .json({ success: false, message: "Manager not found" });
+    }
+
+    if (fullname) manager.fullname = fullname;
+    if (email) manager.email = email;
+
+    if (newPassword) {
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      manager.password = hashedPassword;
+    }
+
+    await manager.save();
+
+    res
+      .status(200)
+      .json({ success: true, message: "Profile updated successfully" });
+  } catch (error) {
+    console.error("Update Manager Error:", error);
+    res.status(500).json({ success: false, message: "Something went wrong" });
+  }
+};
+
 module.exports = {
   createManager,
   getManagers,
   getManagersWithStatus,
+  updateProfile,
 };
