@@ -4,12 +4,19 @@ const Order = require("../models/order");
 const Vendor = require("../models/vendor");
 const Wallet = require("../models/wallet");
 const { orderConfirmationEmail } = require("../mailer");
-
+const Customer = require("../models/customer");
 // INITIATE PAYMENT WITH PAYSTACK
 const initializePaystackPayment = async (req, res) => {
   try {
-    const { amount, email, vendorId, tx_ref, orderPayload, guestInfo } =
-      req.body;
+    const {
+      amount,
+      email,
+      vendorId,
+      tx_ref,
+      orderPayload,
+      guestInfo,
+      customerId,
+    } = req.body;
 
     if (!amount || !email || !vendorId || !tx_ref || !orderPayload) {
       return res.status(400).json({
@@ -18,7 +25,6 @@ const initializePaystackPayment = async (req, res) => {
       });
     }
 
-    // Fetch vendor to get subaccount ID
     const vendor = await Vendor.findById(vendorId);
     if (!vendor || !vendor.subaccountId) {
       return res.status(400).json({
@@ -27,25 +33,38 @@ const initializePaystackPayment = async (req, res) => {
       });
     }
 
-    // Save the pending order
-    const pendingOrder = await Order.create({
+    const newOrderData = {
       vendorId,
       items: orderPayload.items,
-      guestInfo,
       deliveryMethod: orderPayload.deliveryMethod,
       note: orderPayload.note || "",
       totalAmount: amount,
       paymentRef: tx_ref,
       paymentStatus: "pending",
-    });
+    };
 
-    if (guestInfo) {
-      pendingOrder.guestInfo = guestInfo;
+    if (customerId) {
+      newOrderData.customerId = customerId;
+    } else if (guestInfo) {
+      newOrderData.guestInfo = guestInfo;
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "No customer or guest info provided",
+      });
     }
 
-    if (req.body.customerId) {
-      pendingOrder.customerId = req.body.customerId;
+    const pendingOrder = await Order.create(newOrderData);
+
+    // 👉 Add order to Customer's order list
+    if (customerId) {
+      await Customer.findOneAndUpdate(
+        { user: customerId },
+        { $push: { order: pendingOrder._id } },
+        { new: true, upsert: true }
+      );
     }
+
     const payload = {
       email,
       amount: Math.round(Number(amount) * 100),

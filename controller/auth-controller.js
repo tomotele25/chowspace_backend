@@ -4,7 +4,6 @@ const User = require("../models/user");
 const jwt = require("jsonwebtoken");
 const Vendor = require("../models/vendor");
 const { sendSignupEmail } = require("../mailer");
-const Customer = require("../models/customer");
 
 const signup = async (req, res) => {
   const { fullname, contact, email, password } = req.body;
@@ -113,46 +112,4 @@ const login = async (req, res) => {
   });
 };
 
-const syncCustomers = async (req, res) => {
-  try {
-    const users = await User.find({ role: "customer" });
-
-    if (!users.length) {
-      return res
-        .status(404)
-        .json({ message: "No users with role 'customer' found." });
-    }
-
-    const created = [];
-    const skipped = [];
-
-    for (const user of users) {
-      const existing = await Customer.findOne({ user: user._id });
-
-      if (!existing) {
-        const newCustomer = new Customer({
-          user: user._id,
-          fullname: user.fullname || user.name,
-          email: user.email,
-        });
-
-        await newCustomer.save();
-        created.push(user.email);
-      } else {
-        skipped.push(user.email);
-      }
-    }
-
-    res.status(200).json({
-      message: "Customer sync completed",
-      createdCount: created.length,
-      skippedCount: skipped.length,
-      created,
-      skipped,
-    });
-  } catch (error) {
-    console.error("Sync error:", error);
-    res.status(500).json({ message: "Error syncing customers", error });
-  }
-};
-module.exports = { signup, login, syncCustomers };
+module.exports = { signup, login };
