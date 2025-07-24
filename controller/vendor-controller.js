@@ -480,9 +480,9 @@ const rateVendor = async (req, res) => {
 
   vendor.ratings.push({ customerId, stars, comment });
 
+  const totalStars = vendor.ratings.reduce((sum, r) => sum + r.stars, 0);
   vendor.averageRating =
-    vendor.ratings.reduce((sum, r) => sum + r.stars, 0) / vendor.ratings.length;
-
+    Math.round((totalStars / vendor.ratings.length) * 10) / 10;
   await vendor.save();
 
   return res.status(200).json({ message: "Rating submitted successfully." });
