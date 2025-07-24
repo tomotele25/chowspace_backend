@@ -70,7 +70,8 @@ const vendorSchema = new mongoose.Schema(
     },
     deliveryDuration: {
       type: Number,
-      required: true,
+      required: false,
+      default: null,
     },
     ratings: [
       {

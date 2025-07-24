@@ -39,7 +39,6 @@ const createVendor = async (req, res) => {
     address,
     category,
     email,
-    deliveryDuration,
   } = req.body;
 
   try {
@@ -91,7 +90,6 @@ const createVendor = async (req, res) => {
       category,
       businessName,
       password: hashedPassword,
-      deliveryDuration,
     });
 
     await Wallet.create({
