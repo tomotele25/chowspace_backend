@@ -11,6 +11,8 @@ const {
   getTotalCountOfVendor,
   rateVendor,
   getVendorWallet,
+  initPromotePayment,
+  verifyPromotePayment,
 } = require("../controller/vendor-controller");
 const upload = require("../middleware/upload");
 const protectVendor = require("../middleware/isVendor");
@@ -32,4 +34,7 @@ router.put(
   updateVendorProfile
 );
 router.post("/rateVendor", verifyCustomer, rateVendor);
+router.post("/paystack/init-promote", initPromotePayment);
+router.post("/paystack/verify-promote", verifyPromotePayment);
+
 module.exports = router;

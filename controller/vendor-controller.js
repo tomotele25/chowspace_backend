@@ -509,7 +509,79 @@ const rateVendor = async (req, res) => {
   return res.status(200).json({ message: "Rating submitted successfully." });
 };
 
-const promoteVendor = async (req, res) => {};
+const initPromotePayment = async (req, res) => {
+  try {
+    const { email, amount, vendorId, tier } = req.body;
+
+    const response = await axios.post(
+      "https://api.paystack.co/transaction/initialize",
+      {
+        email,
+        amount: amount * 100,
+        callback_url: `https://chowspace.vercel.app/vendors/PromotionVerification`,
+        metadata: {
+          vendorId,
+          tier,
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      authorization_url: response.data.data.authorization_url,
+    });
+  } catch (err) {
+    console.error("Paystack Init Error:", err.response?.data || err.message);
+    res.status(500).json({ error: "Payment initialization failed" });
+  }
+};
+const verifyPromotePayment = async (req, res) => {
+  try {
+    const { reference } = req.body;
+
+    const response = await axios.get(
+      `https://api.paystack.co/transaction/verify/${reference}`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+        },
+      }
+    );
+
+    const data = response.data.data;
+
+    if (data.status === "success") {
+      const vendorId = data.metadata.vendorId;
+      const tier = data.metadata.tier;
+
+      const expiresAt = new Date(
+        Date.now() + (tier === "basic" ? 7 : 30) * 24 * 60 * 60 * 1000
+      );
+      await Vendor.findByIdAndUpdate(vendorId, {
+        isPromoted: true,
+        promotionExpiresAt: expiresAt,
+        promotionTier: tier,
+      });
+
+      return res
+        .status(200)
+        .json({ success: true, message: "Vendor promoted successfully" });
+    } else {
+      return res
+        .status(400)
+        .json({ success: false, message: "Payment verification failed" });
+    }
+  } catch (err) {
+    console.error("Paystack Verify Error:", err.response?.data || err.message);
+    res.status(500).json({ error: "Payment verification failed" });
+  }
+};
 
 module.exports = {
   createVendor,
@@ -523,4 +595,6 @@ module.exports = {
   updateVendorProfile,
   getVendorWallet,
   rateVendor,
+  initPromotePayment,
+  verifyPromotePayment,
 };
