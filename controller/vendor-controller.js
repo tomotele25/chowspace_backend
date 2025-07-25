@@ -509,6 +509,22 @@ const rateVendor = async (req, res) => {
   return res.status(200).json({ message: "Rating submitted successfully." });
 };
 
+const getReviews = async (req, res) => {
+  try {
+    const { vendorId } = req.params;
+
+    const vendor = await Vendor.findById(vendorId).select("ratings");
+
+    if (!vendor) {
+      return res.status(404).json({ message: "Vendor not found" });
+    }
+
+    return res.status(200).json({ reviews: vendor.ratings });
+  } catch (error) {
+    console.error("Error fetching reviews:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
 const initPromotePayment = async (req, res) => {
   try {
     const { email, amount, vendorId, tier } = req.body;
@@ -597,4 +613,5 @@ module.exports = {
   rateVendor,
   initPromotePayment,
   verifyPromotePayment,
+  getReviews,
 };
