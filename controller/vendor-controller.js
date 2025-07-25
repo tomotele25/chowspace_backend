@@ -127,14 +127,35 @@ const createVendor = async (req, res) => {
 
 const getAllVendor = async (req, res) => {
   try {
-    const vendors = await Vendor.find(
-      {},
-      "businessName averageRating fullname email logo location contact address category status slug accountNumber bankName subaccountId deliveryDuration"
+    const now = new Date();
+
+    // 1. Promoted vendors with unexpired promotion
+    const promotedVendors = await Vendor.find(
+      {
+        isPromoted: true,
+        promotionExpiresAt: { $gt: now },
+      },
+      "businessName isPromoted promotionExpiresAt averageRating fullname email logo location contact address category status slug accountNumber bankName subaccountId deliveryDuration"
+    ).sort({ promotionExpiresAt: 1 });
+
+    // 2. Non-promoted or expired promotion vendors
+    const regularVendors = await Vendor.find(
+      {
+        $or: [
+          { isPromoted: { $ne: true } },
+          { promotionExpiresAt: { $lte: now } },
+        ],
+      },
+      "businessName isPromoted  promotionExpiresAt averageRating fullname email logo location contact address category status slug accountNumber bankName subaccountId deliveryDuration"
     );
-    if (!vendors || vendors.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "No vendors found" });
+
+    const vendors = [...promotedVendors, ...regularVendors];
+
+    if (vendors.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No vendors found",
+      });
     }
 
     return res.status(200).json({
@@ -488,11 +509,7 @@ const rateVendor = async (req, res) => {
   return res.status(200).json({ message: "Rating submitted successfully." });
 };
 
-const getReviews = async (req, res) => {
-  try {
-    const reviews = await Vendor.find({}, ratings);
-  } catch (error) {}
-};
+const promoteVendor = async (req, res) => {};
 
 module.exports = {
   createVendor,

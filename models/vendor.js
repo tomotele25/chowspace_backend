@@ -82,6 +82,19 @@ const vendorSchema = new mongoose.Schema(
       },
     ],
     averageRating: { type: Number, default: 0 },
+    isPromoted: {
+      type: Boolean,
+      default: false,
+    },
+    promotionExpiresAt: {
+      type: Date,
+      default: null,
+    },
+    promotionTier: {
+      type: String,
+      enum: ["basic", "premium"],
+      default: "basic",
+    },
   },
   { timestamps: true }
 );
