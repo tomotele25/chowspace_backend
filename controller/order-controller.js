@@ -213,7 +213,9 @@ const getAllOrders = async (req, res) => {
 
   try {
     const query = vendorId ? { vendorId } : {};
-    const orders = await Order.find(query).sort({ createdAt: -1 });
+    const orders = await Order.find(query)
+      .sort({ createdAt: -1 })
+      .populate("customerId", "fullname email");
 
     res.status(200).json({
       success: true,
@@ -279,7 +281,9 @@ const getManagerOrders = async (req, res) => {
         .json({ message: "No vendor ID associated with manager." });
     }
 
-    const orders = await Order.find({ vendorId }).sort({ createdAt: -1 });
+    const orders = await Order.find({ vendorId })
+      .sort({ createdAt: -1 })
+      .populate("customerId", "fullname email");
 
     return res.status(200).json({ success: true, orders });
   } catch (err) {
