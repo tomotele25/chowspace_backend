@@ -25,7 +25,7 @@ const orderConfirmationEmail = async (to, subject) => {
           We're excited to let you know your order has been received and is being processed. Our partner restaurant is preparing your meal with care and it will be on its way shortly!
         </p>
         <div style="text-align: center; margin: 30px 0;">
-          <a href="https://chowspace.vercel.app/Payment-Redirect" style="background-color: #AE2108; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">
+          <a href="https://chowspace.ng/Payment-Redirect" style="background-color: #AE2108; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">
             Track My Order
           </a>
         </div>
@@ -55,7 +55,7 @@ const orderConfirmationEmail = async (to, subject) => {
 
 const sendSignupEmail = async (to, subject) => {
   const mailOptions = {
-    from: process.env.EMAIL_USER,
+    from: '"ChowSpace" <no-reply@chowspace.ng>',
     to,
     subject,
     text: "Welcome to ChowSpace!",
@@ -69,7 +69,7 @@ const sendSignupEmail = async (to, subject) => {
             Get ready to discover your next favorite dish and enjoy seamless ordering!
           </p>
           <div style="text-align: center; margin: 30px 0;">
-            <a href="https://chowspace.vercel.app" style="background-color: #AE2108; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">
+            <a href="https://chowspace.ng" style="background-color: #AE2108; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">
               Visit Chowspace
             </a>
           </div>
@@ -96,38 +96,5 @@ const sendSignupEmail = async (to, subject) => {
     return { success: false, error };
   }
 };
-
-// const sendForgotPasswordEmail = async (to, token) => {
-//   const FRONTEND_URL = process.env.FRONTEND_URL;
-//   const resetLink = `${FRONTEND_URL}/reset/${token}`;
-
-//   const mailOptions = {
-//     from: process.env.EMAIL_USER,
-//     to,
-//     subject: "Reset your Learnova password",
-//     text: "Click the link to reset your password",
-//     html: `
-//       <div style="font-family:sans-serif;background:#f9fafb;padding:30px;">
-//         <div style="max-width:600px;margin:auto;background:#fff;padding:30px;border-radius:8px;">
-//           <h2 style="color:#4f46e5;">Reset Your Password</h2>
-//           <p>Click the button below to reset your password:</p>
-//           <div style="margin:20px 0;">
-//             <a href="${resetLink}" style="background:#10b981;color:#fff;padding:12px 20px;text-decoration:none;border-radius:5px;">Reset Password</a>
-//           </div>
-//           <p>This link expires in 15 minutes. If you didn’t request a reset, ignore this email.</p>
-//         </div>
-//       </div>
-//     `,
-//   };
-
-//   try {
-//     const info = await transporter.sendMail(mailOptions);
-//     console.log("Reset email sent:", info.response);
-//     return { success: true };
-//   } catch (error) {
-//     console.error("Reset email error:", error);
-//     return { success: false, error };
-//   }
-// };
 
 module.exports = { sendSignupEmail, orderConfirmationEmail };
