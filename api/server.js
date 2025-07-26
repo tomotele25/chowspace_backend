@@ -22,7 +22,7 @@ const customerRoute = require("../routes/customer-route");
 const allowedOrigins = [
   "http://localhost:3000",
   "https://chowspace.ng",
-  "https://www.chowspace.ng/",
+  "https://www.chowspace.ng",
 ];
 
 // CORS setup
