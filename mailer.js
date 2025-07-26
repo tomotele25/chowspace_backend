@@ -11,7 +11,7 @@ const transporter = nodemailer.createTransport({
 
 const orderConfirmationEmail = async (to, subject) => {
   const mailOptions = {
-    from: `"Chowspace 🍽️" <${process.env.EMAIL_USER}>`,
+    from: '"ChowSpace" <no-reply@chowspace.ng>',
     to,
     subject,
     text: "Thank you for your order on Chowspace!",
