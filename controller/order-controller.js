@@ -69,7 +69,7 @@ const initializePaystackPayment = async (req, res) => {
       email,
       amount: Math.round(Number(amount) * 100),
       reference: tx_ref,
-      callback_url: "https://chowspace.vercel.app/Payment-Redirect",
+      callback_url: "https://chowspace.ng/Payment-Redirect",
       subaccount: vendor.subaccountId,
     };
 
