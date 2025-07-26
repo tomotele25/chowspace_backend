@@ -19,7 +19,11 @@ const disputeRoute = require("../routes/dispute-route");
 const supportRoute = require("../routes/support-route");
 const customerRoute = require("../routes/customer-route");
 // Allowed CORS origins
-const allowedOrigins = ["http://localhost:3000", "https://chowspace.ng"];
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://chowspace.ng",
+  "https://www.chowspace.ng/",
+];
 
 // CORS setup
 app.use(
