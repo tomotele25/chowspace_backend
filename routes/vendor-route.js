@@ -15,6 +15,10 @@ const {
   initPromotePayment,
   verifyPromotePayment,
 } = require("../controller/vendor-controller");
+const {
+  createVendorRider,
+  getVendorRiders,
+} = require("../controller/rider-controller");
 const upload = require("../middleware/upload");
 const protectVendor = require("../middleware/isVendor");
 const protect = require("../middleware/auth");
@@ -38,5 +42,8 @@ router.post("/rateVendor", verifyCustomer, rateVendor);
 router.post("/paystack/init-promote", initPromotePayment);
 router.post("/paystack/verify-promote", verifyPromotePayment);
 router.get("/vendor/:vendorId/reviews", getReviews);
+router.get("/getVendorRiders/:vendorId", getVendorRiders);
 
 module.exports = router;
+
+// router.post("/createRiderForVendor", createVendorRider);

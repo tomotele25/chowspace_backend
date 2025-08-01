@@ -18,6 +18,7 @@ const locationRoute = require("../routes/location-route");
 const disputeRoute = require("../routes/dispute-route");
 const supportRoute = require("../routes/support-route");
 const customerRoute = require("../routes/customer-route");
+const announcementRoute = require("../routes/announcement-route");
 // Allowed CORS origins
 const allowedOrigins = [
   "http://localhost:3000",
@@ -80,6 +81,7 @@ const startServer = async () => {
     app.use("/api", disputeRoute);
     app.use("/api", supportRoute);
     app.use("/api", customerRoute);
+    app.use("/api", announcementRoute);
 
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
