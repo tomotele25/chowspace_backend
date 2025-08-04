@@ -72,6 +72,79 @@ const createProduct = async (req, res) => {
     });
   }
 };
+
+//UPDATE PRODUCT DATAILS /
+const updateProduct = async (req, res) => {
+  const { price, productName, category, available } = req.body;
+  const { id } = req.params;
+
+  try {
+    const product = await Product.findById(id);
+    const user = req.user;
+
+    if (!user) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    let vendor;
+
+    if (user.role === "vendor") {
+      vendor = await Vendor.findOne({ user: user._id });
+    } else if (user.role === "manager") {
+      const manager = await Manager.findOne({ user: user._id });
+      if (!manager) {
+        return res.status(404).json({
+          success: false,
+          message: "Manager profile not found",
+        });
+      }
+      vendor = await Vendor.findById(manager.vendor);
+    }
+
+    if (!vendor) {
+      return res.status(404).json({
+        success: false,
+        message: "Vendor profile not found",
+      });
+    }
+
+    // Make sure the product belongs to the vendor
+    if (String(product.vendor) !== String(vendor._id)) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not allowed to update this product",
+      });
+    }
+
+    // Optional: Require image for update?
+    const imageUrl = req.file?.path;
+
+    // If image is provided, update it
+    if (imageUrl) {
+      product.image = imageUrl;
+    }
+
+    if (price !== undefined) product.price = price;
+    if (productName) product.productName = productName;
+    if (category) product.category = category;
+    if (available !== undefined) product.available = available;
+
+    await product.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Product updated successfully",
+      product,
+    });
+  } catch (error) {
+    console.error("Error updating product:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
 // Get products for the logged-in vendor/manager
 const getVendorProducts = async (req, res) => {
   try {
@@ -189,4 +262,5 @@ module.exports = {
   updateAvailability,
   getProductsByVendor,
   getProductsByVendorSlug,
+  updateProduct,
 };

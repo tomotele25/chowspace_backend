@@ -9,6 +9,7 @@ const {
   updateAvailability,
   getProductsByVendor,
   getProductsByVendorSlug,
+  updateProduct,
 } = require("../controller/product-controller");
 
 router.post(
@@ -22,5 +23,10 @@ router.get("/product/my-products", protect, getVendorProducts);
 router.get("/product/vendor/:id", getProductsByVendor);
 router.get("/product/vendor/slug/:slug", getProductsByVendorSlug);
 router.patch("/product/:id/toggle-availability", protect, updateAvailability);
-
+router.patch(
+  "/product/update/:id",
+  protect,
+  upload.single("image"),
+  updateProduct
+);
 module.exports = router;
