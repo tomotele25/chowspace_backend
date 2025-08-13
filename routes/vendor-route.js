@@ -43,6 +43,7 @@ router.post("/paystack/init-promote", initPromotePayment);
 router.post("/paystack/verify-promote", verifyPromotePayment);
 router.get("/vendor/:vendorId/reviews", getReviews);
 router.get("/getVendorRiders/:vendorId", getVendorRiders);
+router.get("/createRider", createVendorRider);
 
 module.exports = router;
 

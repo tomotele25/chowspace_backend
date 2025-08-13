@@ -2,7 +2,7 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/user");
 const Manager = require("../models/manager");
-
+const Vendor = require("../models/vendor");
 const authMiddleware = async (req, res, next) => {
   const authHeader = req.headers.authorization;
 
@@ -24,6 +24,12 @@ const authMiddleware = async (req, res, next) => {
       const manager = await Manager.findOne({ user: user._id });
       if (manager) {
         user.vendorId = manager.vendor;
+      }
+    }
+    if (user.role === "vendor") {
+      const vendor = await Vendor.findOne({ user: user._id });
+      if (vendor) {
+        user.vendorId = vendor.vendor;
       }
     }
 

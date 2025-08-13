@@ -11,6 +11,11 @@ const vendorSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    category: {
+      type: String,
+      enum: ["restaurant", "pharmacy", "mall", "drinks"],
+      required: true,
+    },
     email: {
       type: String,
       required: true,

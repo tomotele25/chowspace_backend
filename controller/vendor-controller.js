@@ -277,25 +277,43 @@ const toggleVendorStatus = async (req, res) => {
   }
 
   try {
-    if (req.user.role !== "manager") {
+    let vendorId;
+
+    if (req.user.role === "manager") {
+      // Find vendor linked to manager
+      const managerDoc = await Manager.findOne({ user: req.user._id }).populate(
+        "vendor"
+      );
+
+      if (!managerDoc || !managerDoc.vendor) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Vendor not found for manager" });
+      }
+
+      vendorId = managerDoc.vendor._id;
+    } else if (req.user.role === "vendor") {
+      // Find vendor linked to vendor user
+      const vendorDoc = await Vendor.findOne({ user: req.user._id });
+
+      if (!vendorDoc) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Vendor not found" });
+      }
+
+      vendorId = vendorDoc._id;
+    } else {
       return res.status(403).json({
         success: false,
-        message: "Unauthorized: Only managers can perform this action",
+        message:
+          "Unauthorized: Only managers or vendors can perform this action",
       });
     }
 
-    const managerDoc = await Manager.findOne({ user: req.user._id }).populate(
-      "vendor"
-    );
-
-    if (!managerDoc || !managerDoc.vendor) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Vendor not found for manager" });
-    }
-
+    // Update vendor status
     const updatedVendor = await Vendor.findByIdAndUpdate(
-      managerDoc.vendor._id,
+      vendorId,
       { status },
       { new: true }
     );
