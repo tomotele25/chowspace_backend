@@ -235,9 +235,7 @@ const getProductsByVendorSlug = async (req, res) => {
       });
     }
 
-    const products = await Product.find({ vendor: vendor._id }).select(
-      "image category productName price available ._id"
-    );
+    const products = await Product.find({ vendor: vendor._id });
 
     if (!products || products.length === 0) {
       return res.status(404).json({
