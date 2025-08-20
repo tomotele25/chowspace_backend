@@ -617,6 +617,36 @@ const verifyPromotePayment = async (req, res) => {
   }
 };
 
+const addPack = async (req, res) => {
+  try {
+    const { vendorId } = req.params;
+    const { name, fee } = req.body;
+
+    if (!name || !fee) {
+      return res.status(400).json({ message: "Name and fee are required" });
+    }
+
+    const updatedVendor = await Vendor.findByIdAndUpdate(
+      vendorId,
+      {
+        $push: { packs: { name, fee } },
+      },
+      { new: true }
+    );
+
+    if (!updatedVendor) {
+      return res.status(404).json({ message: "Vendor not found" });
+    }
+
+    res.status(200).json({
+      message: "Pack added successfully",
+      vendor: updatedVendor,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
 module.exports = {
   createVendor,
   getAllVendor,
@@ -631,5 +661,6 @@ module.exports = {
   rateVendor,
   initPromotePayment,
   verifyPromotePayment,
+  addPack,
   getReviews,
 };

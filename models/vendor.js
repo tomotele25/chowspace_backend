@@ -100,6 +100,12 @@ const vendorSchema = new mongoose.Schema(
       enum: ["basic", "premium"],
       default: "basic",
     },
+    packOptions: [
+      {
+        name: { type: String, required: true },
+        fee: { type: Number, required: true },
+      },
+    ],
   },
   { timestamps: true }
 );
