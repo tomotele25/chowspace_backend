@@ -6,7 +6,7 @@ const Manager = require("../models/manager");
 const Wallet = require("../models/wallet");
 const axios = require("axios");
 const Order = require("../models/order");
-const Manager = require;
+const Manager = require("../models/manager");
 const BANK_CODES = {
   "Access Bank": "044",
   EcoBank: "050",
