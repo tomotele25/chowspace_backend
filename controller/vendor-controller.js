@@ -6,7 +6,7 @@ const Manager = require("../models/manager");
 const Wallet = require("../models/wallet");
 const axios = require("axios");
 const Order = require("../models/order");
-
+const Manager = require;
 const BANK_CODES = {
   "Access Bank": "044",
   EcoBank: "050",
@@ -619,18 +619,21 @@ const verifyPromotePayment = async (req, res) => {
 
 const addPack = async (req, res) => {
   try {
-    const { vendorId } = req.params;
+    const { managerId } = req.params;
     const { name, fee } = req.body;
 
     if (!name || !fee) {
       return res.status(400).json({ message: "Name and fee are required" });
     }
 
+    const manager = await Manager.findById(managerId).populate("vendor");
+    if (!manager) {
+      return res.status(404).json({ message: "Manager not found" });
+    }
+
     const updatedVendor = await Vendor.findByIdAndUpdate(
-      vendorId,
-      {
-        $push: { packs: { name, fee } },
-      },
+      manager.vendor,
+      { $push: { packs: { name, fee } } },
       { new: true }
     );
 
@@ -643,6 +646,7 @@ const addPack = async (req, res) => {
       vendor: updatedVendor,
     });
   } catch (error) {
+    console.error("Error adding pack:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };

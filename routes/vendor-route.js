@@ -39,7 +39,8 @@ router.put(
   upload.single("logo"),
   updateVendorProfile
 );
-router.post("/vendors/:vendorId/packs", addPack);
+router.post("/managers/:managerId/packs", addPack);
+
 router.post("/rateVendor", verifyCustomer, rateVendor);
 router.post("/paystack/init-promote", initPromotePayment);
 router.post("/paystack/verify-promote", verifyPromotePayment);
