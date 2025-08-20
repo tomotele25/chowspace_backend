@@ -617,40 +617,6 @@ const verifyPromotePayment = async (req, res) => {
   }
 };
 
-const addPack = async (req, res) => {
-  try {
-    const { managerId } = req.params;
-    const { name, fee } = req.body;
-
-    if (!name || !fee) {
-      return res.status(400).json({ message: "Name and fee are required" });
-    }
-
-    const manager = await Manager.findById(managerId).populate("vendor");
-    if (!manager) {
-      return res.status(404).json({ message: "Manager not found" });
-    }
-
-    const updatedVendor = await Vendor.findByIdAndUpdate(
-      manager.vendor,
-      { $push: { packs: { name, fee } } },
-      { new: true }
-    );
-
-    if (!updatedVendor) {
-      return res.status(404).json({ message: "Vendor not found" });
-    }
-
-    res.status(200).json({
-      message: "Pack added successfully",
-      vendor: updatedVendor,
-    });
-  } catch (error) {
-    console.error("Error adding pack:", error);
-    res.status(500).json({ message: "Server error", error: error.message });
-  }
-};
-
 module.exports = {
   createVendor,
   getAllVendor,
@@ -665,6 +631,6 @@ module.exports = {
   rateVendor,
   initPromotePayment,
   verifyPromotePayment,
-  addPack,
+
   getReviews,
 };

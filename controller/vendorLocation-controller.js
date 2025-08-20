@@ -71,8 +71,47 @@ const deleteVendorLocation = async (req, res) => {
   }
 };
 
+const addPack = async (req, res) => {
+  try {
+    const { managerId } = req.params;
+    const { name, fee } = req.body;
+
+    if (!name || !fee) {
+      return res.status(400).json({ message: "Name and fee are required" });
+    }
+
+    // Step 1: Find manager
+    const manager = await Manager.findOne({
+      user: req.params.managerId,
+    }).populate("vendor");
+    if (!manager) {
+      return res.status(404).json({ message: "Manager not found" });
+    }
+
+    // Step 2: Update vendor linked to this manager
+    const updatedVendor = await Vendor.findByIdAndUpdate(
+      manager.vendor._id,
+      {
+        $push: { packOptions: { name, fee } },
+      },
+      { new: true }
+    );
+
+    if (!updatedVendor) {
+      return res.status(404).json({ message: "Vendor not found" });
+    }
+
+    res.status(200).json({
+      message: "Pack added successfully",
+    });
+  } catch (error) {
+    console.error("Error adding pack:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
 module.exports = {
   deleteVendorLocation,
   getVendorLocations,
   createVendorLocation,
+  addPack,
 };
