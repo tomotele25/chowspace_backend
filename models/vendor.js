@@ -100,6 +100,19 @@ const vendorSchema = new mongoose.Schema(
       enum: ["basic", "premium"],
       default: "basic",
     },
+    paymentPreference: {
+      type: String,
+      enum: ["paystack", "direct"],
+      default: "paystack",
+    },
+
+    bankAccounts: [
+      {
+        bankName: { type: String, required: true },
+        accountNumber: { type: String, required: true },
+        accountName: { type: String, required: true },
+      },
+    ],
     packOptions: [
       {
         name: { type: String, required: true },

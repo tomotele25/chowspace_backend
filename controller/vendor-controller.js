@@ -338,14 +338,16 @@ const toggleVendorStatus = async (req, res) => {
 const updateVendorProfile = async (req, res) => {
   try {
     const user = req.user;
-    if (!user?.vendorId)
+    if (!user?.vendorId) {
       return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
 
     const vendor = await Vendor.findById(user.vendorId);
-    if (!vendor)
+    if (!vendor) {
       return res
         .status(404)
         .json({ success: false, message: "Vendor not found" });
+    }
 
     const {
       businessName,
@@ -358,36 +360,32 @@ const updateVendorProfile = async (req, res) => {
       deliveryDuration,
     } = req.body;
 
-    const vendorUpdate = {
-      businessName,
-      contact,
-      location,
-      address,
-      deliveryDuration,
-    };
-    const userUpdate = {};
+    const vendorUpdate = {};
+    if (businessName) vendorUpdate.businessName = businessName;
+    if (contact) vendorUpdate.contact = contact;
+    if (location) vendorUpdate.location = location;
+    if (address) vendorUpdate.address = address;
+    if (deliveryDuration) vendorUpdate.deliveryDuration = deliveryDuration;
+    if (req.file && req.file.path) vendorUpdate.logo = req.file.path;
 
+    const userUpdate = {};
     if (password) {
       const salt = await bcrypt.genSalt(10);
       userUpdate.password = await bcrypt.hash(password, salt);
     }
 
-    if (req.file && req.file.path) {
-      vendorUpdate.logo = req.file.path;
-    }
-
-    const needsSub = !vendor.subaccountId && accountNumber && bankName;
-    if (needsSub) {
+    if (!vendor.subaccountId && accountNumber && bankName) {
       const bankCode = getBankCode(bankName);
-      if (!bankCode)
+      if (!bankCode) {
         return res
           .status(400)
           .json({ success: false, message: "Invalid bank name" });
+      }
 
       const paystackRes = await axios.post(
         "https://api.paystack.co/subaccount",
         {
-          business_name: businessName,
+          business_name: businessName || vendor.businessName,
           settlement_bank: bankCode,
           account_number: accountNumber,
           percentage_charge: 5,
@@ -406,11 +404,13 @@ const updateVendorProfile = async (req, res) => {
 
     const updatedVendor = await Vendor.findByIdAndUpdate(
       user.vendorId,
-      vendorUpdate,
+      { $set: vendorUpdate },
       { new: true }
     );
 
-    if (password) await User.findByIdAndUpdate(user._id, userUpdate);
+    if (password) {
+      await User.findByIdAndUpdate(user._id, { $set: userUpdate });
+    }
 
     return res.json({ success: true, vendor: updatedVendor });
   } catch (err) {
@@ -422,6 +422,7 @@ const updateVendorProfile = async (req, res) => {
     });
   }
 };
+
 const getVendorWallet = async (req, res) => {
   try {
     const vendorId = req.user.vendorId;
