@@ -225,7 +225,7 @@ const getProductsByVendorSlug = async (req, res) => {
 
   try {
     const vendor = await Vendor.findOne({ slug }).select(
-      "category location logo businessName"
+      "paymentPreference category location logo businessName"
     );
 
     if (!vendor) {

@@ -91,6 +91,7 @@ const login = async (req, res) => {
         location: vendor.location,
         address: vendor.address,
         contact: vendor.contact,
+        paymentPreference: vendor.paymentPreference,
       };
     }
   }

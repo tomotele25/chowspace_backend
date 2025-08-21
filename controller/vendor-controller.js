@@ -39,6 +39,7 @@ const createVendor = async (req, res) => {
     address,
     category,
     email,
+    paymentPreference,
   } = req.body;
 
   try {
@@ -50,7 +51,8 @@ const createVendor = async (req, res) => {
       !contact ||
       !location ||
       !address ||
-      !category
+      !category ||
+      !paymentPreference
     ) {
       return res.status(400).json({
         success: false,
@@ -74,6 +76,7 @@ const createVendor = async (req, res) => {
       password: hashedPassword,
       phoneNumber: contact,
       role: "vendor",
+      paymentPreference,
     });
 
     const slug = slugify(businessName, { lower: true, strict: true });
@@ -90,12 +93,7 @@ const createVendor = async (req, res) => {
       category,
       businessName,
       password: hashedPassword,
-    });
-
-    await Wallet.create({
-      vendorId: newVendor._id,
-      balance: 0,
-      transactions: [],
+      paymentPreference,
     });
 
     res.status(200).json({
@@ -135,7 +133,7 @@ const getAllVendor = async (req, res) => {
         isPromoted: true,
         promotionExpiresAt: { $gt: now },
       },
-      "businessName isPromoted promotionExpiresAt averageRating fullname email logo location contact address category status slug accountNumber bankName subaccountId deliveryDuration"
+      "businessName isPromoted promotionExpiresAt paymentPreference averageRating fullname email logo location contact address category status slug accountNumber bankName subaccountId deliveryDuration"
     ).sort({ promotionExpiresAt: 1 });
 
     // 2. Non-promoted or expired promotion vendors
@@ -146,7 +144,7 @@ const getAllVendor = async (req, res) => {
           { promotionExpiresAt: { $lte: now } },
         ],
       },
-      "businessName isPromoted  promotionExpiresAt averageRating fullname email logo location contact address category status slug accountNumber bankName subaccountId deliveryDuration"
+      "businessName isPromoted paymentPreference promotionExpiresAt averageRating fullname email logo location contact address category status slug accountNumber bankName subaccountId deliveryDuration"
     );
 
     const vendors = [...promotedVendors, ...regularVendors];
@@ -358,6 +356,7 @@ const updateVendorProfile = async (req, res) => {
       accountNumber,
       bankName,
       deliveryDuration,
+      paymentPreference,
     } = req.body;
 
     const vendorUpdate = {};
@@ -365,6 +364,7 @@ const updateVendorProfile = async (req, res) => {
     if (contact) vendorUpdate.contact = contact;
     if (location) vendorUpdate.location = location;
     if (address) vendorUpdate.address = address;
+    if (paymentPreference) vendorUpdate.paymentPreference = paymentPreference;
     if (deliveryDuration) vendorUpdate.deliveryDuration = deliveryDuration;
     if (req.file && req.file.path) vendorUpdate.logo = req.file.path;
 
@@ -618,6 +618,83 @@ const verifyPromotePayment = async (req, res) => {
   }
 };
 
+const updateStoreHours = async (req, res) => {
+  try {
+    const user = req.user; // set by your auth middleware
+    let vendorId;
+
+    if (user.role === "vendor") {
+      vendorId = user.vendorId;
+    } else if (user.role === "manager") {
+      vendorId = user.createdBy; // the vendor the manager belongs to
+    } else {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
+    if (!vendorId) {
+      return res.status(400).json({ error: "Vendor not found" });
+    }
+
+    const vendor = await Vendor.findById(vendorId);
+    if (!vendor) return res.status(404).json({ error: "Vendor not found" });
+
+    vendor.openingHours = req.body.openingHours;
+    await vendor.save();
+
+    res.json({ success: true, vendor });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+const getOpeningHours = async (req, res) => {
+  try {
+    const vendorId = req.params.vendorId;
+
+    if (!vendorId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Vendor ID is required" });
+    }
+
+    const vendor = await Vendor.findById(vendorId).select("openingHours");
+
+    if (!vendor || !vendor.openingHours) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Opening hours not available" });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Opening hours found",
+      openingHours: vendor.openingHours,
+    });
+  } catch (error) {
+    console.error("Could not fetch opening hours:", error.message);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+const autoToggleStatus = async (req, res) => {
+  const { vendorId } = req.params;
+  const { status } = req.body;
+
+  try {
+    const vendor = await Vendor.findById(vendorId);
+    if (!vendor) return res.status(404).json({ message: "Vendor not found" });
+
+    vendor.status = status;
+    await vendor.save();
+
+    res.json({ success: true, vendor });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 module.exports = {
   createVendor,
   getAllVendor,
@@ -628,10 +705,12 @@ module.exports = {
   getVendorStatusById,
   toggleVendorStatus,
   updateVendorProfile,
+  getOpeningHours,
   getVendorWallet,
   rateVendor,
   initPromotePayment,
   verifyPromotePayment,
-
+  updateStoreHours,
   getReviews,
+  autoToggleStatus,
 };

@@ -105,18 +105,29 @@ const vendorSchema = new mongoose.Schema(
       enum: ["paystack", "direct"],
       default: "paystack",
     },
-
-    bankAccounts: [
-      {
-        bankName: { type: String, required: true },
-        accountNumber: { type: String, required: true },
-        accountName: { type: String, required: true },
-      },
-    ],
     packOptions: [
       {
         name: { type: String, required: true },
         fee: { type: Number, required: true },
+      },
+    ],
+    openingHours: [
+      {
+        day: {
+          type: String,
+          enum: [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday",
+          ],
+          required: true,
+        },
+        open: { type: String, required: true },
+        close: { type: String, required: true },
       },
     ],
   },

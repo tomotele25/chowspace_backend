@@ -56,7 +56,6 @@ const initializePaystackPayment = async (req, res) => {
 
     const pendingOrder = await Order.create(newOrderData);
 
-    // 👉 Add order to Customer's order list
     if (customerId) {
       await Customer.findOneAndUpdate(
         { user: customerId },
@@ -182,7 +181,8 @@ const createOrder = async (req, res) => {
     note,
     totalAmount,
     vendorId,
-    paymentReference,
+    packFees,
+    deliveryFee,
   } = req.body;
 
   if (!items || !guestInfo || !deliveryMethod || !totalAmount || !vendorId) {
@@ -190,14 +190,23 @@ const createOrder = async (req, res) => {
   }
 
   try {
+    const orderId = `CT-${Math.random()
+      .toString(36)
+      .substring(2, 10)
+      .toUpperCase()}`;
+
     const newOrder = await Order.create({
+      orderId,
       vendorId,
       items,
       guestInfo,
       deliveryMethod,
       note: note || "",
       totalAmount,
-      paymentReference: paymentReference || null,
+      packFees: packFees || [],
+      deliveryFee: deliveryFee || 0,
+      paymentMethod: "direct",
+      paymentStatus: "pending",
     });
 
     res.status(201).json(newOrder);
