@@ -127,7 +127,6 @@ const getAllVendor = async (req, res) => {
   try {
     const now = new Date();
 
-    // 1. Promoted vendors with unexpired promotion
     const promotedVendors = await Vendor.find(
       {
         isPromoted: true,
@@ -136,7 +135,6 @@ const getAllVendor = async (req, res) => {
       "businessName isPromoted promotionExpiresAt paymentPreference averageRating fullname email logo location contact address category status slug accountNumber bankName subaccountId deliveryDuration"
     ).sort({ promotionExpiresAt: 1 });
 
-    // 2. Non-promoted or expired promotion vendors
     const regularVendors = await Vendor.find(
       {
         $or: [

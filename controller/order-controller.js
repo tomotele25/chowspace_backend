@@ -327,6 +327,30 @@ const cleanupPendingOrders = async (req, res) => {
   }
 };
 
+const getOrdersForAdmin = async (req, res) => {
+  try {
+    const user = req.user;
+
+    if (!user || user.role !== "admin") {
+      return res
+        .status(403)
+        .json({ message: "Access denied. Only admins allowed." });
+    }
+
+    const orders = await Order.find()
+      .sort({ createdAt: -1 })
+      .populate("customerId", "fullname email")
+      .populate("vendorId", "businessName");
+
+    return res.status(200).json({ success: true, orders });
+  } catch (err) {
+    console.error("Error fetching all orders:", err);
+    return res
+      .status(500)
+      .json({ message: "Failed to fetch orders for admin." });
+  }
+};
+
 module.exports = {
   initializePaystackPayment,
   verifyPaystackPayment,
@@ -336,4 +360,5 @@ module.exports = {
   updateOrderStatus,
   getManagerOrders,
   cleanupPendingOrders,
+  getOrdersForAdmin,
 };

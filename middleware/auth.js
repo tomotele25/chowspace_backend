@@ -32,6 +32,12 @@ const authMiddleware = async (req, res, next) => {
         user.vendorId = vendor.vendor;
       }
     }
+    if (user.role === "admin") {
+      const admin = await User.findOne({ user: user._id });
+      if (admin) {
+        user.adminId = admin.admin;
+      }
+    }
 
     req.user = user;
     next();
