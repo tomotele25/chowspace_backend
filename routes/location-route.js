@@ -8,7 +8,8 @@ const {
   createVendorLocation,
   getVendorLocations,
   deleteVendorLocation,
-  addPack,
+  getVendorLocationsByManager,
+  updateVendorLocations,
 } = require("../controller/vendorLocation-controller");
 const auth = require("../middleware/auth");
 router.post("/createVendorLocation", auth, createVendorLocation);
@@ -16,5 +17,7 @@ router.get("/locations/:vendorId", getVendorLocations);
 router.delete("/locations/:id", deleteVendorLocation);
 router.post("/createLocation", createLocation);
 router.get("/getLocations", getLocation);
-router.post("/managers/:managerId/packs", addPack);
+router.get("/locations/manager/:managerId", getVendorLocationsByManager);
+router.put("/locations/:managerId", updateVendorLocations);
+
 module.exports = router;

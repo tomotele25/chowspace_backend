@@ -71,47 +71,91 @@ const deleteVendorLocation = async (req, res) => {
   }
 };
 
-const addPack = async (req, res) => {
+const getVendorLocationsByManager = async (req, res) => {
   try {
     const { managerId } = req.params;
-    const { name, fee } = req.body;
 
-    if (!name || !fee) {
-      return res.status(400).json({ message: "Name and fee are required" });
+    // 1. Find mapping (Manager -> Vendor)
+    const mapping = await Manager.findOne({ user: managerId });
+    if (!mapping) {
+      return res
+        .status(404)
+        .json({ message: "Vendor mapping not found for this manager" });
     }
 
-    // Step 1: Find manager
-    const manager = await Manager.findOne({
-      user: req.params.managerId,
-    }).populate("vendor");
+    // 2. Fetch vendor
+    const vendor = await Vendor.findById(mapping.vendor);
+    if (!vendor) {
+      return res.status(404).json({ message: "Vendor not found" });
+    }
+
+    // 3. Fetch vendor locations
+    const locations = await VendorLocation.find({ vendorId: vendor._id });
+    if (!locations || locations.length === 0) {
+      return res
+        .status(404)
+        .json({ message: "No locations found for this vendor" });
+    }
+
+    res.status(200).json({
+      vendor: {
+        _id: vendor._id,
+        name: vendor.name,
+      },
+      locations,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const updateVendorLocations = async (req, res) => {
+  try {
+    const { managerId } = req.params;
+    const { locations } = req.body;
+
+    if (!locations || !Array.isArray(locations)) {
+      return res
+        .status(400)
+        .json({ message: "Locations must be an array of {location, price}" });
+    }
+
+    const manager = await Manager.findOne({ user: managerId });
     if (!manager) {
       return res.status(404).json({ message: "Manager not found" });
     }
 
-    // Step 2: Update vendor linked to this manager
-    const updatedVendor = await Vendor.findByIdAndUpdate(
-      manager.vendor._id,
-      {
-        $push: { packOptions: { name, fee } },
-      },
-      { new: true }
-    );
-
-    if (!updatedVendor) {
-      return res.status(404).json({ message: "Vendor not found" });
+    const vendorId = manager.vendor;
+    if (!vendorId) {
+      return res
+        .status(404)
+        .json({ message: "Vendor not mapped to this manager" });
     }
 
+    const updates = await Promise.all(
+      locations.map(async ({ location, price }) => {
+        return await VendorLocation.findOneAndUpdate(
+          { vendorId, location },
+          { $set: { price } },
+          { new: true, upsert: true }
+        );
+      })
+    );
+
     res.status(200).json({
-      message: "Pack added successfully",
+      message: "Vendor locations updated successfully",
+      locations: updates,
     });
   } catch (error) {
-    console.error("Error adding pack:", error);
-    res.status(500).json({ message: "Server error", error: error.message });
+    console.error("Error updating vendor locations:", error);
+    res.status(500).json({ message: error.message });
   }
 };
+
 module.exports = {
   deleteVendorLocation,
   getVendorLocations,
   createVendorLocation,
-  addPack,
+  getVendorLocationsByManager,
+  updateVendorLocations,
 };
