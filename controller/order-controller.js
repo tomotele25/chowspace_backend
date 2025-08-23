@@ -5,6 +5,7 @@ const Vendor = require("../models/vendor");
 const Wallet = require("../models/wallet");
 const { orderConfirmationEmail } = require("../mailer");
 const Customer = require("../models/customer");
+const crypto = require("crypto");
 // INITIATE PAYMENT WITH PAYSTACK
 const initializePaystackPayment = async (req, res) => {
   try {
@@ -56,6 +57,7 @@ const initializePaystackPayment = async (req, res) => {
 
     const pendingOrder = await Order.create(newOrderData);
 
+    // 👉 Add order to Customer's order list
     if (customerId) {
       await Customer.findOneAndUpdate(
         { user: customerId },
@@ -183,17 +185,22 @@ const createOrder = async (req, res) => {
     vendorId,
     packFees,
     deliveryFee,
+    orderId,
   } = req.body;
 
-  if (!items || !guestInfo || !deliveryMethod || !totalAmount || !vendorId) {
+  if (
+    !items ||
+    !guestInfo ||
+    !deliveryMethod ||
+    !totalAmount ||
+    !vendorId ||
+    !orderId
+  ) {
     return res.status(400).json({ message: "Missing required order fields." });
   }
 
   try {
-    const orderId = `CT-${Math.random()
-      .toString(36)
-      .substring(2, 10)
-      .toUpperCase()}`;
+    const confirmationToken = crypto.randomBytes(16).toString("hex");
 
     const newOrder = await Order.create({
       orderId,
@@ -207,12 +214,44 @@ const createOrder = async (req, res) => {
       deliveryFee: deliveryFee || 0,
       paymentMethod: "direct",
       paymentStatus: "pending",
+      confirmationToken,
     });
 
     res.status(201).json(newOrder);
   } catch (err) {
     console.error("Order creation failed:", err);
     res.status(500).json({ message: "Failed to create order." });
+  }
+};
+
+const priceConfirmation = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+
+    // ✅ Fetch a single order by orderId
+    const order = await Order.findOne({ orderId }).select(
+      "totalAmount vendorId guestInfo"
+    );
+
+    if (!order) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found" });
+    }
+
+    // ✅ Respond with the full order info if needed
+    res.status(200).json({
+      success: true,
+      message: "Order fetched successfully",
+      order,
+      totalAmount: order.totalAmount,
+    });
+  } catch (error) {
+    console.error("Price confirmation error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
   }
 };
 
@@ -327,30 +366,6 @@ const cleanupPendingOrders = async (req, res) => {
   }
 };
 
-const getOrdersForAdmin = async (req, res) => {
-  try {
-    const user = req.user;
-
-    if (!user || user.role !== "admin") {
-      return res
-        .status(403)
-        .json({ message: "Access denied. Only admins allowed." });
-    }
-
-    const orders = await Order.find()
-      .sort({ createdAt: -1 })
-      .populate("customerId", "fullname email")
-      .populate("vendorId", "businessName");
-
-    return res.status(200).json({ success: true, orders });
-  } catch (err) {
-    console.error("Error fetching all orders:", err);
-    return res
-      .status(500)
-      .json({ message: "Failed to fetch orders for admin." });
-  }
-};
-
 module.exports = {
   initializePaystackPayment,
   verifyPaystackPayment,
@@ -360,5 +375,5 @@ module.exports = {
   updateOrderStatus,
   getManagerOrders,
   cleanupPendingOrders,
-  getOrdersForAdmin,
+  priceConfirmation,
 };
