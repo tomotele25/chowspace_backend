@@ -228,9 +228,8 @@ const priceConfirmation = async (req, res) => {
   try {
     const { orderId } = req.params;
 
-    // ✅ Fetch a single order by orderId
     const order = await Order.findOne({ orderId }).select(
-      "totalAmount vendorId guestInfo"
+      "totalAmount vendorId guestInfo items"
     );
 
     if (!order) {
