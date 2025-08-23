@@ -31,6 +31,5 @@ router.put("/order/:orderId", updateOrderStatus);
 router.get("/manager/orders", auth, getManagerOrders);
 router.get("/confirm/:orderId", priceConfirmation);
 // Cleanup old pending orders
-router.delete("/cleanupPendingOrders", cleanupPendingOrders);
 
 module.exports = router;
