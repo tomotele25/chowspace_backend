@@ -366,6 +366,26 @@ const cleanupPendingOrders = async (req, res) => {
   }
 };
 
+const getAllOrdersForAdmin = async (req, res) => {
+  try {
+    const orders = await Order.find({})
+      .populate("vendorId", "name")
+      .populate("customerId", "email")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      orders,
+    });
+  } catch (err) {
+    console.error("Error fetching orders for admin:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching orders",
+    });
+  }
+};
+
 module.exports = {
   initializePaystackPayment,
   verifyPaystackPayment,
@@ -375,5 +395,6 @@ module.exports = {
   updateOrderStatus,
   getManagerOrders,
   cleanupPendingOrders,
+  getAllOrdersForAdmin,
   priceConfirmation,
 };
