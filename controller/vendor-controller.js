@@ -6,7 +6,7 @@ const Manager = require("../models/manager");
 const Wallet = require("../models/wallet");
 const axios = require("axios");
 const Order = require("../models/order");
-
+const cron = require("node-cron");
 const BANK_CODES = {
   "Access Bank": "044",
   EcoBank: "050",
@@ -693,6 +693,58 @@ const autoToggleStatus = async (req, res) => {
   }
 };
 
+cron.schedule("* * * * *", async () => {
+  try {
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+
+    // Convert to minutes for easier comparison
+    const currentTimeInMinutes = currentHour * 60 + currentMinute;
+
+    // Fetch all vendors
+    const vendors = await Vendor.find();
+
+    for (const vendor of vendors) {
+      if (!vendor.openingTime || !vendor.closingTime) continue;
+
+      // Parse vendor's opening and closing times (assume stored as "HH:mm")
+      const [openHour, openMinute] = vendor.openingTime.split(":").map(Number);
+      const [closeHour, closeMinute] = vendor.closingTime
+        .split(":")
+        .map(Number);
+
+      const openTimeInMinutes = openHour * 60 + openMinute;
+      const closeTimeInMinutes = closeHour * 60 + closeMinute;
+
+      let shouldBeOpen = false;
+
+      if (openTimeInMinutes < closeTimeInMinutes) {
+        // Normal same-day opening/closing
+        shouldBeOpen =
+          currentTimeInMinutes >= openTimeInMinutes &&
+          currentTimeInMinutes < closeTimeInMinutes;
+      } else {
+        // Overnight case (e.g., opens 20:00 closes 04:00)
+        shouldBeOpen =
+          currentTimeInMinutes >= openTimeInMinutes ||
+          currentTimeInMinutes < closeTimeInMinutes;
+      }
+
+      if (vendor.isOpen !== shouldBeOpen) {
+        vendor.isOpen = shouldBeOpen;
+        await vendor.save();
+        console.log(
+          `Vendor ${vendor.name} auto-updated to ${
+            shouldBeOpen ? "OPEN" : "CLOSED"
+          }`
+        );
+      }
+    }
+  } catch (err) {
+    console.error("Error running vendor auto open/close cron:", err);
+  }
+});
 module.exports = {
   createVendor,
   getAllVendor,
