@@ -696,21 +696,25 @@ const autoToggleStatus = async (req, res) => {
 cron.schedule("* * * * *", async () => {
   try {
     const now = new Date();
+    const currentDay = now.toLocaleString("en-US", { weekday: "long" }); // e.g. "Monday"
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
-
-    // Convert to minutes for easier comparison
     const currentTimeInMinutes = currentHour * 60 + currentMinute;
 
-    // Fetch all vendors
     const vendors = await Vendor.find();
 
     for (const vendor of vendors) {
-      if (!vendor.openingTime || !vendor.closingTime) continue;
+      if (!vendor.openingHours || vendor.openingHours.length === 0) continue;
 
-      // Parse vendor's opening and closing times (assume stored as "HH:mm")
-      const [openHour, openMinute] = vendor.openingTime.split(":").map(Number);
-      const [closeHour, closeMinute] = vendor.closingTime
+      // find today’s schedule
+      const todaySchedule = vendor.openingHours.find(
+        (day) => day.day === currentDay
+      );
+
+      if (!todaySchedule) continue;
+
+      const [openHour, openMinute] = todaySchedule.open.split(":").map(Number);
+      const [closeHour, closeMinute] = todaySchedule.close
         .split(":")
         .map(Number);
 
@@ -731,13 +735,15 @@ cron.schedule("* * * * *", async () => {
           currentTimeInMinutes < closeTimeInMinutes;
       }
 
-      if (vendor.isOpen !== shouldBeOpen) {
-        vendor.isOpen = shouldBeOpen;
+      const newStatus = shouldBeOpen ? "opened" : "closed";
+
+      if (vendor.status !== newStatus) {
+        vendor.status = newStatus;
         await vendor.save();
         console.log(
-          `Vendor ${vendor.name} auto-updated to ${
-            shouldBeOpen ? "OPEN" : "CLOSED"
-          }`
+          `Vendor ${
+            vendor.businessName
+          } auto-updated to ${newStatus.toUpperCase()}`
         );
       }
     }
@@ -745,6 +751,7 @@ cron.schedule("* * * * *", async () => {
     console.error("Error running vendor auto open/close cron:", err);
   }
 });
+
 module.exports = {
   createVendor,
   getAllVendor,
