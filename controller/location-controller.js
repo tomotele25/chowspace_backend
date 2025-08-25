@@ -34,7 +34,7 @@ const getLocation = async (req, res) => {
     res.status(200).json({
       success: true,
       message: "Locations fetched successfully",
-      locations: locationNames || [],
+      locations,
     });
   } catch (error) {
     console.error("Error fetching locations:", error);
