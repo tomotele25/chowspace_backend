@@ -174,7 +174,7 @@ const getVendorProducts = async (req, res) => {
 
     const products = await Product.find({ vendor: vendor._id });
 
-    res.status(200).json({ success: true, products });
+    res.status(200).json({ success: true, products: products || [] });
   } catch (error) {
     console.error("Error fetching products:", error);
     res.status(500).json({ message: "Server error" });
@@ -212,7 +212,7 @@ const getProductsByVendor = async (req, res) => {
         .json({ success: false, message: "No products found for this vendor" });
     }
 
-    res.status(200).json({ success: true, products });
+    res.status(200).json({ success: true, products: products || [] });
   } catch (error) {
     console.error("Error fetching products:", error);
     res.status(500).json({ success: false, message: "Server error" });
@@ -247,7 +247,7 @@ const getProductsByVendorSlug = async (req, res) => {
     res.status(200).json({
       success: true,
       vendor,
-      products,
+      products: products || [],
     });
   } catch (err) {
     console.error("Error fetching products by vendor slug:", err);

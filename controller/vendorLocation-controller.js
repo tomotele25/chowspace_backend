@@ -54,7 +54,7 @@ const getVendorLocations = async (req, res) => {
     const locations = await VendorLocation.find({ vendorId }).sort({
       location: 1,
     });
-    res.status(200).json(locations);
+    res.status(200).json({ locations: locations || [] });
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch vendor locations." });
   }
@@ -102,7 +102,7 @@ const getVendorLocationsByManager = async (req, res) => {
         _id: vendor._id,
         name: vendor.name,
       },
-      locations,
+      locations: locations || [],
     });
   } catch (error) {
     res.status(500).json({ message: error.message });

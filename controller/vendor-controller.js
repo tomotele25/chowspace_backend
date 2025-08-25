@@ -696,7 +696,7 @@ const autoToggleStatus = async (req, res) => {
 cron.schedule("* * * * *", async () => {
   try {
     const now = new Date();
-    const currentDay = now.toLocaleString("en-US", { weekday: "long" }); // e.g. "Monday"
+    const currentDay = now.toLocaleString("en-US", { weekday: "long" });
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
     const currentTimeInMinutes = currentHour * 60 + currentMinute;
@@ -724,12 +724,10 @@ cron.schedule("* * * * *", async () => {
       let shouldBeOpen = false;
 
       if (openTimeInMinutes < closeTimeInMinutes) {
-        // Normal same-day opening/closing
         shouldBeOpen =
           currentTimeInMinutes >= openTimeInMinutes &&
           currentTimeInMinutes < closeTimeInMinutes;
       } else {
-        // Overnight case (e.g., opens 20:00 closes 04:00)
         shouldBeOpen =
           currentTimeInMinutes >= openTimeInMinutes ||
           currentTimeInMinutes < closeTimeInMinutes;
