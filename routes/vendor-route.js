@@ -18,10 +18,6 @@ const {
   getOpeningHours,
   autoToggleStatus,
 } = require("../controller/vendor-controller");
-const {
-  createVendorRider,
-  getVendorRiders,
-} = require("../controller/rider-controller");
 
 const bothRole = require("../middleware/bothRole");
 const upload = require("../middleware/upload");
@@ -50,9 +46,5 @@ router.post("/rateVendor", verifyCustomer, rateVendor);
 router.post("/paystack/init-promote", initPromotePayment);
 router.post("/paystack/verify-promote", verifyPromotePayment);
 router.get("/vendor/:vendorId/reviews", getReviews);
-router.get("/getVendorRiders/:vendorId", getVendorRiders);
-router.get("/createRider", createVendorRider);
 
 module.exports = router;
-
-// router.post("/createRiderForVendor", createVendorRider);

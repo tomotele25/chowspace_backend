@@ -1,7 +1,7 @@
 const VendorLocation = require("../models/vendorLocation");
 const Manager = require("../models/manager");
 const Vendor = require("../models/vendor");
-
+const PlatformLocation = require("../models/platformLocations");
 const createVendorLocation = async (req, res) => {
   try {
     const { location, price } = req.body;
@@ -152,10 +152,79 @@ const updateVendorLocations = async (req, res) => {
   }
 };
 
+const syncVendorLocationsToPlatform = async (req, res) => {
+  try {
+    const vendorLocations = await VendorLocation.find({});
+    if (!vendorLocations.length) {
+      return res
+        .status(200)
+        .json({ success: true, message: "No vendor locations found" });
+    }
+
+    let updatedCount = 0;
+    let insertedCount = 0;
+
+    for (const loc of vendorLocations) {
+      const existing = await PlatformLocation.findOne({
+        location: loc.location,
+      });
+      if (existing) {
+        // Update price if different
+        if (existing.price !== loc.price) {
+          existing.price = loc.price;
+          await existing.save();
+          updatedCount++;
+        }
+      } else {
+        // Insert new location
+        await PlatformLocation.create({
+          location: loc.location,
+          price: loc.price,
+        });
+        insertedCount++;
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Platform locations synced successfully`,
+      updated: updatedCount,
+      inserted: insertedCount,
+    });
+  } catch (err) {
+    console.error("Error syncing locations:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to sync locations",
+    });
+  }
+};
+
+const getPlatformLocations = async (req, res) => {
+  try {
+    const locations = await PlatformLocation.find(
+      {},
+      { _id: 0, location: 1, price: 1 }
+    );
+    return res.status(200).json({
+      success: true,
+      locations,
+    });
+  } catch (err) {
+    console.error("Error fetching platform locations:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch platform locations",
+    });
+  }
+};
+
 module.exports = {
   deleteVendorLocation,
   getVendorLocations,
   createVendorLocation,
   getVendorLocationsByManager,
   updateVendorLocations,
+  syncVendorLocationsToPlatform,
+  getPlatformLocations,
 };

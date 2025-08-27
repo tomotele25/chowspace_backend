@@ -10,6 +10,8 @@ const {
   deleteVendorLocation,
   getVendorLocationsByManager,
   updateVendorLocations,
+  getPlatformLocations,
+  syncVendorLocationsToPlatform,
 } = require("../controller/vendorLocation-controller");
 const auth = require("../middleware/auth");
 router.post("/createVendorLocation", auth, createVendorLocation);
@@ -19,5 +21,6 @@ router.post("/createLocation", createLocation);
 router.get("/getLocations", getLocation);
 router.get("/locations/manager/:managerId", getVendorLocationsByManager);
 router.put("/locations/:managerId", updateVendorLocations);
-
+router.get("/sync-locations", syncVendorLocationsToPlatform);
+router.get("/platform-locations", getPlatformLocations);
 module.exports = router;

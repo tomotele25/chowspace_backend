@@ -696,7 +696,10 @@ const autoToggleStatus = async (req, res) => {
 cron.schedule("* * * * *", async () => {
   try {
     const now = new Date();
-    const currentDay = now.toLocaleString("en-US", { weekday: "long" });
+    const currentDay = now.toLocaleString("en-US", {
+      weekday: "long",
+      timeZone: "Africa/Lagos", // ✅ adjust for Nigeria timezone
+    });
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
     const currentTimeInMinutes = currentHour * 60 + currentMinute;
@@ -706,7 +709,6 @@ cron.schedule("* * * * *", async () => {
     for (const vendor of vendors) {
       if (!vendor.openingHours || vendor.openingHours.length === 0) continue;
 
-      // find today’s schedule
       const todaySchedule = vendor.openingHours.find(
         (day) => day.day === currentDay
       );
@@ -728,6 +730,7 @@ cron.schedule("* * * * *", async () => {
           currentTimeInMinutes >= openTimeInMinutes &&
           currentTimeInMinutes < closeTimeInMinutes;
       } else {
+        // handles overnight shifts
         shouldBeOpen =
           currentTimeInMinutes >= openTimeInMinutes ||
           currentTimeInMinutes < closeTimeInMinutes;
