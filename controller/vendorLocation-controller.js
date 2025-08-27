@@ -202,10 +202,7 @@ const syncVendorLocationsToPlatform = async (req, res) => {
 
 const getPlatformLocations = async (req, res) => {
   try {
-    const locations = await PlatformLocation.find(
-      {},
-      { _id: 0, location: 1, price: 1 }
-    );
+    const locations = await PlatformLocation.find().select("location price");
     return res.status(200).json({
       success: true,
       locations,

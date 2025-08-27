@@ -54,7 +54,7 @@ const getAnnouncement = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: "Announcement fetched successfully",
-      announcements: formattedAnnouncements || [],
+      announcements: formattedAnnouncements,
     });
   } catch (error) {
     console.error("Announcement fetch error:", error);
