@@ -145,7 +145,6 @@ const updateProduct = async (req, res) => {
   }
 };
 
-// Get products for the logged-in vendor/manager
 const getVendorProducts = async (req, res) => {
   try {
     const user = req.user;
@@ -172,12 +171,40 @@ const getVendorProducts = async (req, res) => {
       return res.status(404).json({ message: "Vendor not found" });
     }
 
-    const products = await Product.find({ vendor: vendor._id });
+    const products = await Product.find({ vendor: vendor._id }).sort({
+      position: 1,
+    });
 
     res.status(200).json({ success: true, products });
   } catch (error) {
     console.error("Error fetching products:", error);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+const reorderProducts = async (req, res) => {
+  try {
+    const { products } = req.body;
+
+    if (!products || !products.length) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Product list is empty or missing" });
+    }
+
+    const bulkOps = products.map((p) => ({
+      updateOne: {
+        filter: { _id: p.id },
+        update: { position: p.position },
+      },
+    }));
+
+    await Product.bulkWrite(bulkOps);
+
+    res.json({ success: true, message: "Products reordered successfully" });
+  } catch (err) {
+    console.error("Error reordering products:", err);
+    res.status(500).json({ success: false, error: err.message });
   }
 };
 
@@ -219,41 +246,24 @@ const getProductsByVendor = async (req, res) => {
   }
 };
 
-// ✅ New: Get products by vendor slug
 const getProductsByVendorSlug = async (req, res) => {
-  const { slug } = req.params;
-
   try {
-    const vendor = await Vendor.findOne({ slug }).select(
-      "paymentPreference category location logo businessName"
-    );
+    const { slug } = req.params;
 
+    const vendor = await Vendor.findOne({ slug });
     if (!vendor) {
-      return res.status(404).json({
-        success: false,
-        message: "Vendor not found",
-      });
+      return res.status(404).json({ message: "Vendor not found" });
     }
 
-    const products = await Product.find({ vendor: vendor._id });
-
-    if (!products || products.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "No products found for this vendor",
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      vendor,
-      products,
+    const products = await Product.find({ vendor: vendor._id }).sort({
+      position: 1,
     });
-  } catch (err) {
-    console.error("Error fetching products by vendor slug:", err);
+
+    res.status(200).json({ success: true, vendor, products });
+  } catch (error) {
     res.status(500).json({
-      success: false,
-      message: "Server error",
+      message: "Error fetching products by slug",
+      error: error.message,
     });
   }
 };
@@ -265,4 +275,5 @@ module.exports = {
   getProductsByVendor,
   getProductsByVendorSlug,
   updateProduct,
+  reorderProducts,
 };

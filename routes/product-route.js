@@ -9,6 +9,7 @@ const {
   updateAvailability,
   getProductsByVendor,
   getProductsByVendorSlug,
+  reorderProducts,
   updateProduct,
 } = require("../controller/product-controller");
 
@@ -29,4 +30,7 @@ router.patch(
   upload.single("image"),
   updateProduct
 );
+
+router.patch("/product/rearrange", protect, reorderProducts);
+
 module.exports = router;
