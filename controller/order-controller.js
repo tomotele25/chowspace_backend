@@ -174,11 +174,11 @@ const verifyPaystackPayment = async (req, res) => {
   }
 };
 
-// MANUAL ORDER CREATION (IF NEEDED)
 const createOrder = async (req, res) => {
   const {
     items,
     guestInfo,
+    customerInfo,
     deliveryMethod,
     note,
     totalAmount,
@@ -190,7 +190,7 @@ const createOrder = async (req, res) => {
 
   if (
     !items ||
-    !guestInfo ||
+    (!guestInfo && !customerInfo) ||
     !deliveryMethod ||
     !totalAmount ||
     !vendorId ||
@@ -206,7 +206,8 @@ const createOrder = async (req, res) => {
       orderId,
       vendorId,
       items,
-      guestInfo,
+      guestInfo: guestInfo || null,
+      customerInfo: customerInfo || null,
       deliveryMethod,
       note: note || "",
       totalAmount,
