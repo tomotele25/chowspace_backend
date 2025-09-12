@@ -216,6 +216,48 @@ const getPlatformLocations = async (req, res) => {
   }
 };
 
+const createLocationByVendor = async (req, res) => {
+  try {
+    const { location, price } = req.body;
+
+    if (!location || !price) {
+      return res.status(400).json({ message: "All fields are required." });
+    }
+
+    const user = req.user;
+
+    if (user.role !== "vendor") {
+      return res
+        .status(403)
+        .json({ message: "Only vendors can create locations." });
+    }
+
+    const vendorId = user._id;
+
+    const existing = await VendorLocation.findOne({
+      vendorId,
+      location: location.trim(),
+    });
+
+    if (existing) {
+      return res.status(400).json({
+        message: "This location already exists for this vendor.",
+      });
+    }
+
+    const newLocation = await VendorLocation.create({
+      vendorId,
+      location: location.trim(),
+      price,
+    });
+
+    res.status(201).json(newLocation);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error." });
+  }
+};
+
 module.exports = {
   deleteVendorLocation,
   getVendorLocations,
