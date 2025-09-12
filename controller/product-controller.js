@@ -1,6 +1,7 @@
 const Product = require("../models/product");
 const Vendor = require("../models/vendor");
 const Manager = require("../models/manager");
+const product = require("../models/product");
 
 // Create a product
 const createProduct = async (req, res) => {
@@ -268,6 +269,25 @@ const getProductsByVendorSlug = async (req, res) => {
   }
 };
 
+const deleteProductById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const product = await Product.findByIdAndDelete(id);
+    if (!product) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Product not found" });
+    }
+
+    res
+      .status(200)
+      .json({ success: true, message: "Product deleted successfully" });
+  } catch (error) {
+    console.log("Error deleting product:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 module.exports = {
   createProduct,
   getVendorProducts,
@@ -276,4 +296,5 @@ module.exports = {
   getProductsByVendorSlug,
   updateProduct,
   reorderProducts,
+  deleteProductById,
 };

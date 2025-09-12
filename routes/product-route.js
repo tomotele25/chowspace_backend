@@ -11,6 +11,7 @@ const {
   getProductsByVendorSlug,
   reorderProducts,
   updateProduct,
+  deleteProductById,
 } = require("../controller/product-controller");
 
 router.post(
@@ -30,7 +31,7 @@ router.patch(
   upload.single("image"),
   updateProduct
 );
-
+router.delete("/product-delete/:id", deleteProductById);
 router.patch("/product/rearrange", protect, reorderProducts);
 
 module.exports = router;
