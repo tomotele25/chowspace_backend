@@ -3,7 +3,7 @@ const User = require("../models/user");
 const Manager = require("../models/manager");
 const Vendor = require("../models/vendor");
 
-const authMiddleware = async (req, res, next) => {
+const vendorAuthMiddleware = async (req, res, next) => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -21,25 +21,25 @@ const authMiddleware = async (req, res, next) => {
       return res.status(401).json({ message: "User not found" });
     }
 
-    if (user.role === "manager") {
-      const manager = await Manager.findOne({ user: user._id });
-      if (manager) {
-        user.vendorId = manager.vendor;
-      }
+    if (user.role !== "vendor") {
+      return res
+        .status(403)
+        .json({ message: "Access denied. Only vendors allowed." });
     }
 
-    if (user.role === "vendor") {
-      const vendor = await Vendor.findOne({ user: user._id });
-      if (vendor) {
-        user.vendorId = vendor._id;
-      }
+    const vendor = await Vendor.findOne({ user: user._id });
+    if (!vendor) {
+      return res.status(404).json({ message: "Vendor profile not found." });
     }
 
+    user.vendorId = vendor._id;
     req.user = user;
+
     next();
   } catch (error) {
-    return res.status(401).json({ message: "Invalid token" });
+    console.error(error);
+    return res.status(401).json({ message: "Invalid token." });
   }
 };
 
-module.exports = authMiddleware;
+module.exports = vendorAuthMiddleware;

@@ -266,4 +266,5 @@ module.exports = {
   updateVendorLocations,
   syncVendorLocationsToPlatform,
   getPlatformLocations,
+  createLocationByVendor,
 };
