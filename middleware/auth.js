@@ -29,7 +29,7 @@ const authMiddleware = async (req, res, next) => {
     if (user.role === "vendor") {
       const vendor = await Vendor.findOne({ user: user._id });
       if (vendor) {
-        user.vendorId = vendor.vendor;
+        user.vendorId = vendor._id;
       }
     }
     if (user.role === "admin") {

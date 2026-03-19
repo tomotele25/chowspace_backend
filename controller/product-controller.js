@@ -146,6 +146,7 @@ const updateProduct = async (req, res) => {
   }
 };
 
+
 const getVendorProducts = async (req, res) => {
   try {
     const user = req.user;

@@ -2,6 +2,7 @@ const VendorLocation = require("../models/vendorLocation");
 const Manager = require("../models/manager");
 const Vendor = require("../models/vendor");
 const PlatformLocation = require("../models/platformLocations");
+
 const createVendorLocation = async (req, res) => {
   try {
     const { location, price } = req.body;
@@ -14,13 +15,13 @@ const createVendorLocation = async (req, res) => {
 
     let vendorId;
 
-    if (user.role === "vendor") {
-      vendorId = user._id;
-    } else if (user.role === "manager" && user.vendorId) {
-      vendorId = user.vendorId;
-    } else {
-      return res.status(404).json({ message: "Vendor or manager not found." });
-    }
+ if (user.role === "vendor") {
+   vendorId = user.vendorId; 
+ } else if (user.role === "manager" && user.vendorId) {
+   vendorId = user.vendorId;
+ } else {
+   return res.status(404).json({ message: "Vendor or manager not found." });
+ }
 
     // Check if location already exists for this vendor
     const existing = await VendorLocation.findOne({
@@ -34,7 +35,6 @@ const createVendorLocation = async (req, res) => {
       });
     }
 
-    // Create new location
     const newLocation = await VendorLocation.create({
       vendorId,
       location: location.trim(),
@@ -47,6 +47,7 @@ const createVendorLocation = async (req, res) => {
     res.status(500).json({ message: "Failed to create vendor location." });
   }
 };
+
 // Get all locations for a vendor
 const getVendorLocations = async (req, res) => {
   try {
@@ -137,9 +138,9 @@ const updateVendorLocations = async (req, res) => {
         return await VendorLocation.findOneAndUpdate(
           { vendorId, location },
           { $set: { price } },
-          { new: true, upsert: true }
+          { new: true, upsert: true },
         );
-      })
+      }),
     );
 
     res.status(200).json({
@@ -169,14 +170,12 @@ const syncVendorLocationsToPlatform = async (req, res) => {
         location: loc.location,
       });
       if (existing) {
-        // Update price if different
         if (existing.price !== loc.price) {
           existing.price = loc.price;
           await existing.save();
           updatedCount++;
         }
       } else {
-        // Insert new location
         await PlatformLocation.create({
           location: loc.location,
           price: loc.price,
@@ -216,6 +215,7 @@ const getPlatformLocations = async (req, res) => {
   }
 };
 
+
 const createLocationByVendor = async (req, res) => {
   try {
     const { location, price } = req.body;
@@ -226,13 +226,19 @@ const createLocationByVendor = async (req, res) => {
 
     const user = req.user;
 
-    if (user.role !== "vendor") {
+    let vendorId;
+
+    if (user.role === "vendor") {
+      vendorId = user._id;
+    } else if (user.role === "manager" && user.vendorId) {
+      vendorId = user.vendorId;
+    } else {
       return res
         .status(403)
-        .json({ message: "Only vendors can create locations." });
+        .json({
+          message: "Only vendors or their managers can create locations.",
+        });
     }
-
-    const vendorId = user._id;
 
     const existing = await VendorLocation.findOne({
       vendorId,
@@ -257,6 +263,7 @@ const createLocationByVendor = async (req, res) => {
     res.status(500).json({ message: "Server error." });
   }
 };
+ 
 
 module.exports = {
   deleteVendorLocation,

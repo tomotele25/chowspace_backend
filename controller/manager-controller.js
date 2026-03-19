@@ -121,9 +121,31 @@ const updateProfile = async (req, res) => {
   }
 };
 
+
+const getManagerByVendorId = async (req, res) => {
+  try {
+    const { vendorId } = req.query; 
+
+    if (!vendorId) {
+      return res.status(400).json({ success: false, message: "Vendor ID is required" });
+    }
+
+    const manager = await Manager.findOne({ vendor: vendorId }).select("user");
+
+    if (!manager) {
+      return res.status(404).json({ success: false, message: "Manager not found" });
+    }
+
+    return res.status(200).json({ success: true, managerId: manager.user });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 module.exports = {
   createManager,
   getManagers,
   getManagersWithStatus,
   updateProfile,
+  getManagerByVendorId
 };

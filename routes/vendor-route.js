@@ -17,6 +17,7 @@ const {
   updateStoreHours,
   getOpeningHours,
   autoToggleStatus,
+  autoToggleVendors
 } = require("../controller/vendor-controller");
 
 const bothRole = require("../middleware/bothRole");
@@ -34,6 +35,7 @@ router.get("/getVendorStatusById/:vendorId", getVendorStatusById);
 router.put("/:vendorId/update-hours", bothRole, updateStoreHours);
 router.get("/getVendorWallet", protectVendor, getVendorWallet);
 router.put("/vendor/toggleStatus", protect, toggleVendorStatus);
+router.get("/auto-toggle-vendors", autoToggleVendors);
 router.put(
   "/vendor/profile/update",
   protectVendor,

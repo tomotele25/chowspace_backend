@@ -6,7 +6,7 @@ const Manager = require("../models/manager");
 const Wallet = require("../models/wallet");
 const axios = require("axios");
 const Order = require("../models/order");
-const cron = require("node-cron");
+
 const BANK_CODES = {
   "Access Bank": "044",
   EcoBank: "050",
@@ -132,7 +132,7 @@ const getAllVendor = async (req, res) => {
         isPromoted: true,
         promotionExpiresAt: { $gt: now },
       },
-      "businessName isPromoted promotionExpiresAt paymentPreference averageRating fullname email logo location contact address category status slug accountNumber bankName subaccountId deliveryDuration"
+      "businessName isPromoted promotionExpiresAt paymentPreference averageRating fullname email logo location contact address category status slug accountNumber bankName subaccountId deliveryDuration createdAt",
     ).sort({ promotionExpiresAt: 1 });
 
     const regularVendors = await Vendor.find(
@@ -142,7 +142,7 @@ const getAllVendor = async (req, res) => {
           { promotionExpiresAt: { $lte: now } },
         ],
       },
-      "businessName isPromoted paymentPreference promotionExpiresAt averageRating fullname email logo location contact address category status slug accountNumber bankName subaccountId deliveryDuration"
+      "businessName isPromoted paymentPreference promotionExpiresAt averageRating fullname email logo location contact address category status slug accountNumber bankName subaccountId deliveryDuration createdAt",
     );
 
     const vendors = [...promotedVendors, ...regularVendors];
@@ -276,28 +276,22 @@ const toggleVendorStatus = async (req, res) => {
     let vendorId;
 
     if (req.user.role === "manager") {
-      // Find vendor linked to manager
       const managerDoc = await Manager.findOne({ user: req.user._id }).populate(
-        "vendor"
+        "vendor",
       );
-
       if (!managerDoc || !managerDoc.vendor) {
         return res
           .status(404)
           .json({ success: false, message: "Vendor not found for manager" });
       }
-
       vendorId = managerDoc.vendor._id;
     } else if (req.user.role === "vendor") {
-      // Find vendor linked to vendor user
       const vendorDoc = await Vendor.findOne({ user: req.user._id });
-
       if (!vendorDoc) {
         return res
           .status(404)
           .json({ success: false, message: "Vendor not found" });
       }
-
       vendorId = vendorDoc._id;
     } else {
       return res.status(403).json({
@@ -307,11 +301,10 @@ const toggleVendorStatus = async (req, res) => {
       });
     }
 
-    // Update vendor status
     const updatedVendor = await Vendor.findByIdAndUpdate(
       vendorId,
       { status },
-      { new: true }
+      { new: true },
     );
 
     if (!updatedVendor) {
@@ -392,7 +385,7 @@ const updateVendorProfile = async (req, res) => {
           headers: {
             Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
           },
-        }
+        },
       );
 
       vendorUpdate.accountNumber = accountNumber;
@@ -403,7 +396,7 @@ const updateVendorProfile = async (req, res) => {
     const updatedVendor = await Vendor.findByIdAndUpdate(
       user.vendorId,
       { $set: vendorUpdate },
-      { new: true }
+      { new: true },
     );
 
     if (password) {
@@ -476,7 +469,7 @@ const getVendorDailyIncome = async (req, res) => {
 
     const totalIncome = orders.reduce(
       (sum, order) => sum + order.totalAmount,
-      0
+      0,
     );
 
     return res.status(200).json({
@@ -508,7 +501,7 @@ const rateVendor = async (req, res) => {
   if (!vendor) return res.status(404).json({ message: "Vendor not found." });
 
   const existingRating = vendor.ratings.find(
-    (r) => r.customerId.toString() === customerId
+    (r) => r.customerId.toString() === customerId,
   );
   if (existingRating) {
     return res
@@ -542,6 +535,7 @@ const getReviews = async (req, res) => {
     return res.status(500).json({ message: "Internal server error" });
   }
 };
+
 const initPromotePayment = async (req, res) => {
   try {
     const { email, amount, vendorId, tier } = req.body;
@@ -552,17 +546,14 @@ const initPromotePayment = async (req, res) => {
         email,
         amount: amount * 100,
         callback_url: `https://chowspace.vercel.app/vendors/PromotionVerification`,
-        metadata: {
-          vendorId,
-          tier,
-        },
+        metadata: { vendorId, tier },
       },
       {
         headers: {
           Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
           "Content-Type": "application/json",
         },
-      }
+      },
     );
 
     return res.status(200).json({
@@ -574,6 +565,7 @@ const initPromotePayment = async (req, res) => {
     res.status(500).json({ error: "Payment initialization failed" });
   }
 };
+
 const verifyPromotePayment = async (req, res) => {
   try {
     const { reference } = req.body;
@@ -584,7 +576,7 @@ const verifyPromotePayment = async (req, res) => {
         headers: {
           Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
         },
-      }
+      },
     );
 
     const data = response.data.data;
@@ -594,7 +586,7 @@ const verifyPromotePayment = async (req, res) => {
       const tier = data.metadata.tier;
 
       const expiresAt = new Date(
-        Date.now() + (tier === "basic" ? 7 : 30) * 24 * 60 * 60 * 1000
+        Date.now() + (tier === "basic" ? 7 : 30) * 24 * 60 * 60 * 1000,
       );
       await Vendor.findByIdAndUpdate(vendorId, {
         isPromoted: true,
@@ -618,13 +610,13 @@ const verifyPromotePayment = async (req, res) => {
 
 const updateStoreHours = async (req, res) => {
   try {
-    const user = req.user; // set by your auth middleware
+    const user = req.user;
     let vendorId;
 
     if (user.role === "vendor") {
       vendorId = user.vendorId;
     } else if (user.role === "manager") {
-      vendorId = user.createdBy; // the vendor the manager belongs to
+      vendorId = user.createdBy;
     } else {
       return res.status(403).json({ error: "Unauthorized" });
     }
@@ -693,65 +685,63 @@ const autoToggleStatus = async (req, res) => {
   }
 };
 
-cron.schedule("* * * * *", async () => {
+
+const autoToggleVendors = async (req, res) => {
   try {
     const now = new Date();
-    const currentDay = now.toLocaleString("en-US", {
-      weekday: "long",
-      timeZone: "Africa/Lagos", // ✅ adjust for Nigeria timezone
-    });
-    const currentHour = now.getHours();
-    const currentMinute = now.getMinutes();
-    const currentTimeInMinutes = currentHour * 60 + currentMinute;
+
+    // Fix: derive BOTH day name and clock time from Lagos local time
+    const lagosTime = new Date(
+      now.toLocaleString("en-US", { timeZone: "Africa/Lagos" }),
+    );
+    const currentDay = lagosTime.toLocaleString("en-US", { weekday: "long" });
+    const currentTimeInMinutes =
+      lagosTime.getHours() * 60 + lagosTime.getMinutes();
 
     const vendors = await Vendor.find();
+    let toggled = 0;
 
     for (const vendor of vendors) {
-      if (!vendor.openingHours || vendor.openingHours.length === 0) continue;
+      if (!vendor.openingHours?.length) continue;
 
       const todaySchedule = vendor.openingHours.find(
-        (day) => day.day === currentDay
+        (d) => d.day === currentDay,
       );
-
       if (!todaySchedule) continue;
 
-      const [openHour, openMinute] = todaySchedule.open.split(":").map(Number);
-      const [closeHour, closeMinute] = todaySchedule.close
-        .split(":")
-        .map(Number);
+      const [openHour, openMin] = todaySchedule.open.split(":").map(Number);
+      const [closeHour, closeMin] = todaySchedule.close.split(":").map(Number);
+      const openTime = openHour * 60 + openMin;
+      const closeTime = closeHour * 60 + closeMin;
 
-      const openTimeInMinutes = openHour * 60 + openMinute;
-      const closeTimeInMinutes = closeHour * 60 + closeMinute;
-
-      let shouldBeOpen = false;
-
-      if (openTimeInMinutes < closeTimeInMinutes) {
-        shouldBeOpen =
-          currentTimeInMinutes >= openTimeInMinutes &&
-          currentTimeInMinutes < closeTimeInMinutes;
-      } else {
-        // handles overnight shifts
-        shouldBeOpen =
-          currentTimeInMinutes >= openTimeInMinutes ||
-          currentTimeInMinutes < closeTimeInMinutes;
-      }
+      const shouldBeOpen =
+        openTime < closeTime
+          ? currentTimeInMinutes >= openTime && currentTimeInMinutes < closeTime
+          : currentTimeInMinutes >= openTime ||
+            currentTimeInMinutes < closeTime; // overnight
 
       const newStatus = shouldBeOpen ? "opened" : "closed";
 
       if (vendor.status !== newStatus) {
         vendor.status = newStatus;
         await vendor.save();
-        console.log(
-          `Vendor ${
-            vendor.businessName
-          } auto-updated to ${newStatus.toUpperCase()}`
-        );
+        toggled++;
+        console.log(`${vendor.businessName} → ${newStatus.toUpperCase()}`);
       }
     }
+
+    return res.status(200).json({
+      success: true,
+      message: `Auto-toggle complete`,
+      toggled,
+      currentDay,
+      lagosTime: lagosTime.toISOString(),
+    });
   } catch (err) {
-    console.error("Error running vendor auto open/close cron:", err);
+    console.error("Auto-toggle error:", err);
+    return res.status(500).json({ success: false, message: err.message });
   }
-});
+};
 
 module.exports = {
   createVendor,
@@ -771,4 +761,5 @@ module.exports = {
   updateStoreHours,
   getReviews,
   autoToggleStatus,
+  autoToggleVendors, 
 };
