@@ -82,6 +82,19 @@ io.on("connection", (socket) => {
     console.log(`${socket.id} joined vendor_${vendorId}`);
   });
 
+  /* ── Send message ─────────────────────────────────────────
+     Payload from client:
+     {
+       roomId:     "vendor_68ab..." | "order_CS-123456"
+       text:       "Hello, is jollof available?"
+       sender:     "Tunde"              ← customer display name
+       senderType: "customer"           ← or "vendor"
+       vendorId:   "68ab15eecf..."      ← always include
+       orderId:    "CS-123456" | null   ← include if order exists
+       fileUrl:    null | "https://..."
+       fileName:   null | "receipt.pdf"
+     }
+  ───────────────────────────────────────────────────────── */
   socket.on("sendMessage", async (data) => {
     const {
       roomId,
