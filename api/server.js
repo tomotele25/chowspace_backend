@@ -30,6 +30,7 @@ const server = http.createServer(app);
 
 const allowedOrigins = [
   "http://localhost:3000",
+  "http://localhost:8081",
   "https://chowspace.ng",
   "https://www.chowspace.ng",
 ];
