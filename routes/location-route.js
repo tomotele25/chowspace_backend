@@ -13,6 +13,7 @@ const {
   getPlatformLocations,
   createLocationByVendor,
   syncVendorLocationsToPlatform,
+  getVendorPackingFee
 } = require("../controller/vendorLocation-controller");
 const auth = require("../middleware/auth");
 const vendorAuthMiddleware = require("../middleware/vendor");
@@ -26,5 +27,9 @@ router.put("/locations/:managerId", updateVendorLocations);
 router.get("/sync-locations", syncVendorLocationsToPlatform);
 router.get("/platform-locations", getPlatformLocations);
 router.post("/locations", vendorAuthMiddleware, createLocationByVendor);
+
+
+
+router.get("/packing-fee/:vendorId", getVendorPackingFee);
 
 module.exports = router;

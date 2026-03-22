@@ -61,6 +61,22 @@ const getVendorLocations = async (req, res) => {
   }
 };
 
+const getVendorPackingFee = async (req, res) => {
+  try {
+    const { vendorId } = req.params;
+
+    const vendor = await Vendor.findById(vendorId).select("packingFee");
+
+    if (!vendor) {
+      return res.status(404).json({ error: "Vendor not found." });
+    }
+
+    res.status(200).json({ packingFee: vendor.packingFee });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch packing fee." });
+  }
+};
+
 // Delete a vendor location
 const deleteVendorLocation = async (req, res) => {
   try {
@@ -274,4 +290,5 @@ module.exports = {
   syncVendorLocationsToPlatform,
   getPlatformLocations,
   createLocationByVendor,
+ getVendorPackingFee
 };
