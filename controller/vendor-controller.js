@@ -132,7 +132,7 @@ const getAllVendor = async (req, res) => {
         isPromoted: true,
         promotionExpiresAt: { $gt: now },
       },
-      "businessName isPromoted promotionExpiresAt paymentPreference averageRating fullname email logo location contact address category status slug accountNumber bankName subaccountId deliveryDuration createdAt"
+      "businessName isPromoted promotionExpiresAt paymentPreference averageRating  logo location address category status slug deliveryDuration createdAt"
     ).sort({ promotionExpiresAt: 1 });
 
     const regularVendors = await Vendor.find(
@@ -142,7 +142,7 @@ const getAllVendor = async (req, res) => {
           { promotionExpiresAt: { $lte: now } },
         ],
       },
-      "businessName isPromoted paymentPreference promotionExpiresAt averageRating fullname email logo location contact address category status slug accountNumber bankName subaccountId deliveryDuration createdAt",
+      "businessName isPromoted promotionExpiresAt averageRating logo location address category status slug accountNumber bankName subaccountId deliveryDuration createdAt",
     );
 
     const vendors = [...promotedVendors, ...regularVendors];
@@ -616,35 +616,7 @@ const verifyPromotePayment = async (req, res) => {
   }
 };
 
-const updateStoreHours = async (req, res) => {
-  try {
-    const user = req.user; // set by your auth middleware
-    let vendorId;
 
-    if (user.role === "vendor") {
-      vendorId = user.vendorId;
-    } else if (user.role === "manager") {
-      vendorId = user.createdBy; // the vendor the manager belongs to
-    } else {
-      return res.status(403).json({ error: "Unauthorized" });
-    }
-
-    if (!vendorId) {
-      return res.status(400).json({ error: "Vendor not found" });
-    }
-
-    const vendor = await Vendor.findById(vendorId);
-    if (!vendor) return res.status(404).json({ error: "Vendor not found" });
-
-    vendor.openingHours = req.body.openingHours;
-    await vendor.save();
-
-    res.json({ success: true, vendor });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error" });
-  }
-};
 
 const getOpeningHours = async (req, res) => {
   try {
@@ -675,83 +647,7 @@ const getOpeningHours = async (req, res) => {
   }
 };
 
-const autoToggleStatus = async (req, res) => {
-  const { vendorId } = req.params;
-  const { status } = req.body;
 
-  try {
-    const vendor = await Vendor.findById(vendorId);
-    if (!vendor) return res.status(404).json({ message: "Vendor not found" });
-
-    vendor.status = status;
-    await vendor.save();
-
-    res.json({ success: true, vendor });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-cron.schedule("* * * * *", async () => {
-  try {
-    const now = new Date();
-    const currentDay = now.toLocaleString("en-US", {
-      weekday: "long",
-      timeZone: "Africa/Lagos", // ✅ adjust for Nigeria timezone
-    });
-    const currentHour = now.getHours();
-    const currentMinute = now.getMinutes();
-    const currentTimeInMinutes = currentHour * 60 + currentMinute;
-
-    const vendors = await Vendor.find();
-
-    for (const vendor of vendors) {
-      if (!vendor.openingHours || vendor.openingHours.length === 0) continue;
-
-      const todaySchedule = vendor.openingHours.find(
-        (day) => day.day === currentDay
-      );
-
-      if (!todaySchedule) continue;
-
-      const [openHour, openMinute] = todaySchedule.open.split(":").map(Number);
-      const [closeHour, closeMinute] = todaySchedule.close
-        .split(":")
-        .map(Number);
-
-      const openTimeInMinutes = openHour * 60 + openMinute;
-      const closeTimeInMinutes = closeHour * 60 + closeMinute;
-
-      let shouldBeOpen = false;
-
-      if (openTimeInMinutes < closeTimeInMinutes) {
-        shouldBeOpen =
-          currentTimeInMinutes >= openTimeInMinutes &&
-          currentTimeInMinutes < closeTimeInMinutes;
-      } else {
-        // handles overnight shifts
-        shouldBeOpen =
-          currentTimeInMinutes >= openTimeInMinutes ||
-          currentTimeInMinutes < closeTimeInMinutes;
-      }
-
-      const newStatus = shouldBeOpen ? "opened" : "closed";
-
-      if (vendor.status !== newStatus) {
-        vendor.status = newStatus;
-        await vendor.save();
-        console.log(
-          `Vendor ${
-            vendor.businessName
-          } auto-updated to ${newStatus.toUpperCase()}`
-        );
-      }
-    }
-  } catch (err) {
-    console.error("Error running vendor auto open/close cron:", err);
-  }
-});
 
 module.exports = {
   createVendor,
@@ -768,7 +664,6 @@ module.exports = {
   rateVendor,
   initPromotePayment,
   verifyPromotePayment,
-  updateStoreHours,
   getReviews,
-  autoToggleStatus,
+
 };

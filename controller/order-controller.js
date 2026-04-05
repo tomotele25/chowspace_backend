@@ -6,6 +6,7 @@ const Wallet = require("../models/wallet");
 const { orderConfirmationEmail } = require("../mailer");
 const Customer = require("../models/customer");
 const crypto = require("crypto");
+
 // INITIATE PAYMENT WITH PAYSTACK
 const initializePaystackPayment = async (req, res) => {
   try {

@@ -14,9 +14,9 @@ const {
   getVendorWallet,
   initPromotePayment,
   verifyPromotePayment,
-  updateStoreHours,
+
   getOpeningHours,
-  autoToggleStatus,
+
 } = require("../controller/vendor-controller");
 
 const bothRole = require("../middleware/bothRole");
@@ -31,7 +31,7 @@ router.get("/vendor/:slug", getVendorBySlug);
 router.get("/vendor/:vendorId/opening-hours", bothRole, getOpeningHours);
 router.get("/getVendorStatus", protect, getVendorStatus);
 router.get("/getVendorStatusById/:vendorId", getVendorStatusById);
-router.put("/:vendorId/update-hours", bothRole, updateStoreHours);
+
 router.get("/getVendorWallet", protectVendor, getVendorWallet);
 router.put("/vendor/toggleStatus", protect, toggleVendorStatus);
 router.put(
@@ -40,7 +40,7 @@ router.put(
   upload.single("logo"),
   updateVendorProfile
 );
-router.put("/auto-toggleStatus/:vendorId", bothRole, autoToggleStatus);
+
 
 router.post("/rateVendor", verifyCustomer, rateVendor);
 router.post("/paystack/init-promote", initPromotePayment);
