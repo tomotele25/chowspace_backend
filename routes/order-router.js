@@ -10,6 +10,7 @@ const {
   cleanupPendingOrders,
   priceConfirmation,
   getAllOrdersForAdmin,
+  initializeMoneiPayment,
 } = require("../controller/order-controller");
 
 const auth = require("../middleware/auth");
@@ -20,8 +21,8 @@ const adminAuth = require("../middleware/adminAuth");
 router.post("/orders", createOrder);
 
 // Payment (Paystack)
-router.post("/init-payment", initializePaystackPayment);
-router.post("/verifyPayment", verifyPaystackPayment);
+router.post("/payment/monei/initialize", initializeMoneiPayment);
+// router.post("/verifyPayment", verifyPaystackPayment);
 
 // Order Management
 router.get("/getAllOrders", getAllOrders);

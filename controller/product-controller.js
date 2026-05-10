@@ -252,7 +252,7 @@ const getProductsByVendorSlug = async (req, res) => {
   try {
     const { slug } = req.params;
 
-    const vendor = await Vendor.findOne({ slug });
+    const vendor = await Vendor.findOne({ slug }).select("-password");
     if (!vendor) {
       return res.status(404).json({ message: "Vendor not found" });
     }

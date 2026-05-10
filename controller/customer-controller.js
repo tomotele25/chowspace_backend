@@ -11,7 +11,6 @@ const getAllCustomers = async (req, res) => {
         .status(400)
         .json({ success: false, message: "Customers not found" });
     }
-
     res
       .status(200)
       .json({ success: true, message: "Customers fetched successfully" });
@@ -27,19 +26,15 @@ const getAllCustomers = async (req, res) => {
 const getAllCustomersWithUserDetails = async (req, res) => {
   try {
     const users = await User.find({ role: "customer" });
-
     if (!users.length) {
       return res
         .status(404)
         .json({ message: "No users with role 'customer' found." });
     }
-
     const created = [];
     const skipped = [];
-
     for (const user of users) {
       const existing = await Customer.findOne({ user: user._id });
-
       if (!existing) {
         const newCustomer = new Customer({
           user: user._id,
@@ -47,14 +42,12 @@ const getAllCustomersWithUserDetails = async (req, res) => {
           email: user.email || "",
           phone: user.phone || "",
         });
-
         await newCustomer.save();
         created.push(user.email);
       } else {
         skipped.push(user.email);
       }
     }
-
     res.status(200).json({
       message: "Customer sync completed",
       createdCount: created.length,
@@ -70,24 +63,121 @@ const getAllCustomersWithUserDetails = async (req, res) => {
 
 const getOrderHistoryByCustomer = async (req, res) => {
   const { customerId } = req.params;
-
   if (!customerId) {
     return res
       .status(400)
       .json({ success: false, message: "Customer ID required" });
   }
-
   try {
     const orders = await Order.find({ customerId }).sort({ createdAt: -1 });
-
     if (!orders || orders.length === 0) {
       return res
         .status(404)
         .json({ success: false, message: "No orders found for this customer" });
     }
-
     return res.status(200).json({ success: true, orders });
   } catch (error) {
+    return res
+      .status(500)
+      .json({ success: false, message: "Server error", error: error.message });
+  }
+};
+
+/**
+ * POST /api/customers/birthday
+ * Body: { phone, month, day, vendorId }
+ *
+ * Looks up the User by phoneNumber, then saves birthday
+ * on their linked Customer record (upserts if missing).
+ * Returns 200 even for guests (no account) so the frontend
+ * still sets localStorage and hides the nudge.
+ */
+const saveBirthday = async (req, res) => {
+  try {
+    const { phone, month, day, vendorId } = req.body;
+
+    if (!phone || !month || !day) {
+      return res
+        .status(400)
+        .json({ success: false, message: "phone, month and day are required" });
+    }
+
+    const dayNum = parseInt(day, 10);
+    if (isNaN(dayNum) || dayNum < 1 || dayNum > 31) {
+      return res.status(400).json({ success: false, message: "Invalid day" });
+    }
+
+    // Build both phone variants so we match however it was stored
+    let normPhone = String(phone).replace(/\D/g, "");
+    const phoneVariants = [normPhone];
+    if (normPhone.startsWith("234")) {
+      phoneVariants.push("0" + normPhone.slice(3));
+    } else if (normPhone.startsWith("0")) {
+      phoneVariants.push("234" + normPhone.slice(1));
+    }
+
+    // Find the user account by phone
+    const user = await User.findOne({ phoneNumber: { $in: phoneVariants } });
+
+    if (!user) {
+      // Guest with no account — save by phone number alone.
+      // Try to update an existing guest record first (phone match, no user linked).
+      const existingGuest = await Customer.findOneAndUpdate(
+        { phone: normPhone, user: null },
+        {
+          $set: {
+            "birthday.month": month,
+            "birthday.day": dayNum,
+            hasBirthday: true,
+            ...(vendorId ? { birthdayVendorId: vendorId } : {}),
+          },
+        },
+        { new: true },
+      );
+
+      // No existing guest record — create a fresh one.
+      // user is not required for guests so we omit it entirely.
+      if (!existingGuest) {
+        await Customer.create({
+          phone: normPhone,
+          email: "guest@chowspace.ng", // placeholder, required by schema
+          birthday: { month, day: dayNum },
+          hasBirthday: true,
+          ...(vendorId ? { birthdayVendorId: vendorId } : {}),
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Birthday saved for guest",
+      });
+    }
+
+    // Logged-in user — save birthday on their Customer record (upsert if missing)
+    const customer = await Customer.findOneAndUpdate(
+      { user: user._id },
+      {
+        $set: {
+          email: user.email,
+          fullname: user.fullname || "",
+          phone: normPhone,
+          "birthday.month": month,
+          "birthday.day": dayNum,
+          hasBirthday: true,
+          ...(vendorId ? { birthdayVendorId: vendorId } : {}),
+        },
+        $setOnInsert: { user: user._id },
+      },
+      { upsert: true, new: true },
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Birthday saved successfully",
+      customerId: customer._id,
+    });
+  } catch (error) {
+    console.error("saveBirthday error:", error.message);
     return res
       .status(500)
       .json({ success: false, message: "Server error", error: error.message });
@@ -98,4 +188,5 @@ module.exports = {
   getOrderHistoryByCustomer,
   getAllCustomers,
   getAllCustomersWithUserDetails,
+  saveBirthday,
 };

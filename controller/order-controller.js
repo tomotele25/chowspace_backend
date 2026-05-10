@@ -7,8 +7,11 @@ const { orderConfirmationEmail } = require("../mailer");
 const Customer = require("../models/customer");
 const crypto = require("crypto");
 
-// INITIATE PAYMENT WITH PAYSTACK
-const initializePaystackPayment = async (req, res) => {
+const { MoneiSDK } = require("monei-sdk");
+const monei = new MoneiSDK( process.env.MONEI_SECRET_KEY );
+
+
+const initializeMoneiPayment = async (req, res) => {
   try {
     const {
       amount,
@@ -28,14 +31,15 @@ const initializePaystackPayment = async (req, res) => {
     }
 
     const vendor = await Vendor.findById(vendorId);
-    if (!vendor || !vendor.subaccountId) {
+    if (!vendor) {
       return res.status(400).json({
         success: false,
-        message: "Vendor or subaccount not found",
+        message: "Vendor not found",
       });
     }
 
     const newOrderData = {
+      orderId: tx_ref,
       vendorId,
       items: orderPayload.items,
       deliveryMethod: orderPayload.deliveryMethod,
@@ -63,117 +67,179 @@ const initializePaystackPayment = async (req, res) => {
       await Customer.findOneAndUpdate(
         { user: customerId },
         { $push: { order: pendingOrder._id } },
-        { new: true, upsert: true }
+        { new: true, upsert: true },
       );
     }
 
-    const payload = {
-      email,
-      amount: Math.round(Number(amount) * 100),
+  
+    const deposit = await monei.deposit.initializeDeposit({
+      method: "BANK_TRANSFER",
+      amount: Math.round(Number(amount) * 100), // naira → kobo
       reference: tx_ref,
-      callback_url: "https://chowspace.ng/Payment-Redirect",
-      subaccount: vendor.subaccountId,
-    };
-
-    const response = await axios.post(
-      "https://api.paystack.co/transaction/initialize",
-      payload,
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+      currency: "NGN",
+      narration: `Order ${pendingOrder._id} — ${vendor.businessName}`,
+    });
 
     return res.status(200).json({
       success: true,
       message: "Payment initialized and order saved",
-      paymentLink: response.data.data.authorization_url,
       orderId: pendingOrder._id,
+      deposit: {
+        reference: deposit.reference,
+        accountNumber: deposit.accountNumber,
+        bankName: deposit.bankName,
+        accountName: deposit.accountName,
+        amount: deposit.amount,
+        expiry_datetime: deposit.expiry_datetime,
+        note: deposit.note,
+        status: deposit.status,
+      },
     });
-  } catch (error) {
-    console.error("Init error:", error.response?.data || error.message);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to initialize payment",
-      error: error.response?.data || error.message,
-    });
-  }
+  }  catch (error) {
+  console.error("Monei init error FULL:", error); 
+  console.error("Monei init error message:", error.message);
+  console.error("Monei init error response:", error.response?.data);
+  console.error("Monei init error stack:", error.stack);
+  return res.status(500).json({
+    success: false,
+    message: "Failed to initialize payment",
+    error: error.message || error.toString(),
+  });
+}
 };
 
-// VERIFY PAYMENT AND CREDIT VENDOR WALLET
-const verifyPaystackPayment = async (req, res) => {
+
+const verifyMoneiPayment = async (req, res) => {
   const { reference } = req.body;
 
   try {
-    const result = await axios.get(
-      `https://api.paystack.co/transaction/verify/${reference}`,
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
-        },
-      }
-    );
+    // 👉 Real SDK method is getStatus (not verify)
+    const depositStatus = await monei.deposit.getStatus({ reference });
 
-    const data = result.data.data;
-
-    if (data.status !== "success") {
-      return res
-        .status(400)
-        .json({ success: false, message: "Payment failed", data });
+    if (
+      depositStatus.status !== "COMPLETED" &&
+      depositStatus.status !== "SUCCESS"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment not yet confirmed",
+        status: depositStatus.status,
+      });
     }
 
     const order = await Order.findOne({ paymentRef: reference });
     if (!order) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Order not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
     }
 
-    if (data.amount !== order.totalAmount * 100) {
-      return res.status(400).json({
-        success: false,
-        message: "Amount mismatch. Payment not valid.",
+    // Guard against double-processing
+    if (order.paymentStatus === "paid") {
+      return res.status(200).json({
+        success: true,
+        message: "Payment already verified",
+        order,
       });
     }
 
     // Update payment status
-    if (order.paymentStatus !== "paid") {
-      order.paymentStatus = "paid";
-      await order.save();
-    }
+    order.paymentStatus = "paid";
+    await order.save();
 
+    // 👉 Send confirmation email
     try {
-      await orderConfirmationEmail(
-        order.guestInfo.email,
-        "Your Chowspace Order Has Been Confirmed 🎉"
-      );
+      const emailAddress = order.guestInfo?.email || order.customerInfo?.email;
+      if (emailAddress) {
+        await orderConfirmationEmail(
+          emailAddress,
+          "Your Chowspace Order Has Been Confirmed 🎉",
+        );
+      }
     } catch (err) {
       console.error("Email failed:", err);
     }
 
-    // Credit wallet, etc...
+    // 👉 Credit vendor wallet
     const wallet = await Wallet.findOne({ vendorId: order.vendorId });
     if (wallet) {
-      const amountPaid = data.amount / 100;
+      const amountPaid = depositStatus.amount / 100; // kobo → naira
       wallet.balance += amountPaid;
       wallet.transactions.unshift({
         type: "credit",
         amount: amountPaid,
-        description: `Order #${order._id} - Payment via Paystack`,
+        description: `Order #${order._id} - Payment via Monei`,
       });
       await wallet.save();
     }
 
-    return res
-      .status(200)
-      .json({ success: true, message: "Payment verified", order });
+    return res.status(200).json({
+      success: true,
+      message: "Payment verified",
+      order,
+    });
   } catch (err) {
-    console.error("Verify error", err.response?.data || err.message);
-    res.status(500).json({ success: false, message: "Internal error" });
+    console.error("Monei verify error:", err.response?.data || err.message);
+    return res.status(500).json({
+      success: false,
+      message: "Internal error during payment verification",
+    });
   }
 };
+
+
+const moneiWebhook = async (req, res) => {
+  try {
+    const event = req.body;
+
+    if (event.status !== "COMPLETED" && event.status !== "SUCCESS") {
+      return res.status(200).json({ received: true });
+    }
+
+    const reference = event.reference;
+    const order = await Order.findOne({ paymentRef: reference });
+
+    if (!order || order.paymentStatus === "paid") {
+      return res.status(200).json({ received: true });
+    }
+
+    order.paymentStatus = "paid";
+    await order.save();
+
+    // Credit vendor wallet
+    const wallet = await Wallet.findOne({ vendorId: order.vendorId });
+    if (wallet) {
+      const amountPaid = event.amount / 100;
+      wallet.balance += amountPaid;
+      wallet.transactions.unshift({
+        type: "credit",
+        amount: amountPaid,
+        description: `Order #${order._id} - Monei webhook`,
+      });
+      await wallet.save();
+    }
+
+    // Send confirmation email
+    try {
+      const emailAddress = order.guestInfo?.email || order.customerInfo?.email;
+      if (emailAddress) {
+        await orderConfirmationEmail(
+          emailAddress,
+          "Your Chowspace Order Has Been Confirmed 🎉",
+        );
+      }
+    } catch (err) {
+      console.error("Email failed:", err);
+    }
+
+    return res.status(200).json({ received: true });
+  } catch (err) {
+    console.error("Monei webhook error:", err.message);
+    return res.status(500).json({ success: false, message: "Webhook error" });
+  }
+};
+
 
 const createOrder = async (req, res) => {
   const {
@@ -226,21 +292,22 @@ const createOrder = async (req, res) => {
   }
 };
 
+
 const priceConfirmation = async (req, res) => {
   try {
     const { orderId } = req.params;
 
     const order = await Order.findOne({ orderId }).select(
-      "totalAmount vendorId guestInfo items"
+      "totalAmount vendorId guestInfo items",
     );
 
     if (!order) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Order not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
     }
 
-    // ✅ Respond with the full order info if needed
     res.status(200).json({
       success: true,
       message: "Order fetched successfully",
@@ -256,7 +323,7 @@ const priceConfirmation = async (req, res) => {
   }
 };
 
-// GET ALL ORDERS (OPTIONALLY BY VENDOR)
+
 const getAllOrders = async (req, res) => {
   const { vendorId } = req.query;
 
@@ -277,7 +344,7 @@ const getAllOrders = async (req, res) => {
   }
 };
 
-// GET SINGLE ORDER
+
 const getOrderById = async (req, res) => {
   const { orderId } = req.params;
 
@@ -292,7 +359,7 @@ const getOrderById = async (req, res) => {
   }
 };
 
-// UPDATE ORDER STATUS
+
 const updateOrderStatus = async (req, res) => {
   const { orderId } = req.params;
   const { status, paymentStatus } = req.body;
@@ -312,7 +379,7 @@ const updateOrderStatus = async (req, res) => {
   }
 };
 
-// MANAGER ORDERS ONLY
+
 const getManagerOrders = async (req, res) => {
   try {
     const user = req.user;
@@ -343,7 +410,7 @@ const getManagerOrders = async (req, res) => {
   }
 };
 
-// DELETE OLD PENDING ORDERS
+
 const cleanupPendingOrders = async (req, res) => {
   try {
     const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
@@ -367,6 +434,7 @@ const cleanupPendingOrders = async (req, res) => {
   }
 };
 
+
 const getAllOrdersForAdmin = async (req, res) => {
   try {
     const orders = await Order.find({})
@@ -388,8 +456,9 @@ const getAllOrdersForAdmin = async (req, res) => {
 };
 
 module.exports = {
-  initializePaystackPayment,
-  verifyPaystackPayment,
+  initializeMoneiPayment,
+  verifyMoneiPayment,
+  moneiWebhook,
   createOrder,
   getAllOrders,
   getOrderById,
