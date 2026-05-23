@@ -5,17 +5,32 @@ const mongoose = require("mongoose");
 
 const getAllCustomers = async (req, res) => {
   try {
-    const customers = await User.find({ role: "customer" });
-    if (!customers) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Customers not found" });
+    const customers = await Customer.find(
+      {},
+      {
+        phone: 1,
+        birthday: 1,
+        fullname: 1,
+        hasBirthday: 1,
+        _id: 0,
+      },
+    );
+
+    if (!customers || customers.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Customers not found",
+      });
     }
-    res
-      .status(200)
-      .json({ success: true, message: "Customers fetched successfully" });
+
+    res.status(200).json({
+      success: true,
+      message: "Customers fetched successfully",
+      data: customers,
+    });
   } catch (error) {
     console.error("Unable to fetch customers", error.message);
+
     res.status(500).json({
       success: false,
       message: "Server error",
@@ -83,15 +98,7 @@ const getOrderHistoryByCustomer = async (req, res) => {
   }
 };
 
-/**
- * POST /api/customers/birthday
- * Body: { phone, month, day, vendorId }
- *
- * Looks up the User by phoneNumber, then saves birthday
- * on their linked Customer record (upserts if missing).
- * Returns 200 even for guests (no account) so the frontend
- * still sets localStorage and hides the nudge.
- */
+
 const saveBirthday = async (req, res) => {
   try {
     const { phone, month, day, vendorId } = req.body;
@@ -120,10 +127,11 @@ const saveBirthday = async (req, res) => {
     const user = await User.findOne({ phoneNumber: { $in: phoneVariants } });
 
     if (!user) {
-      // Guest with no account — save by phone number alone.
-      // Try to update an existing guest record first (phone match, no user linked).
-      const existingGuest = await Customer.findOneAndUpdate(
-        { phone: normPhone, user: null },
+      // Guest — upsert by phone only, never set the user field.
+      // Querying by phone avoids the user_1 unique index entirely
+      // so multiple guests never trigger a duplicate key error.
+      await Customer.findOneAndUpdate(
+        { phone: normPhone },
         {
           $set: {
             "birthday.month": month,
@@ -131,21 +139,13 @@ const saveBirthday = async (req, res) => {
             hasBirthday: true,
             ...(vendorId ? { birthdayVendorId: vendorId } : {}),
           },
+          $setOnInsert: {
+            phone: normPhone,
+            email: "guest@chowspace.ng",
+          },
         },
-        { new: true },
+        { upsert: true, new: true },
       );
-
-      // No existing guest record — create a fresh one.
-      // user is not required for guests so we omit it entirely.
-      if (!existingGuest) {
-        await Customer.create({
-          phone: normPhone,
-          email: "guest@chowspace.ng", // placeholder, required by schema
-          birthday: { month, day: dayNum },
-          hasBirthday: true,
-          ...(vendorId ? { birthdayVendorId: vendorId } : {}),
-        });
-      }
 
       return res.status(200).json({
         success: true,
@@ -183,6 +183,7 @@ const saveBirthday = async (req, res) => {
       .json({ success: false, message: "Server error", error: error.message });
   }
 };
+
 
 module.exports = {
   getOrderHistoryByCustomer,

@@ -5,9 +5,9 @@ const customerSchema = new mongoose.Schema(
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      default: null, // null for guest customers
-      sparse: true, // allows multiple docs with null, but unique when set
-      unique: true,
+      default: null,
+      // ⚠️ No unique/sparse here — defined via schema.index() below
+      // so Mongoose creates the index correctly
     },
     email: {
       type: String,
@@ -27,14 +27,13 @@ const customerSchema = new mongoose.Schema(
       },
     ],
 
-    // ── Birthday (added for ChowSpace birthday treat feature) ──
+    // ── Birthday ──
     birthday: {
-      month: { type: String, default: null }, // e.g. "March"
-      day: { type: Number, default: null }, // e.g. 15
+      month: { type: String, default: null },
+      day: { type: Number, default: null },
     },
     hasBirthday: { type: Boolean, default: false },
 
-    // The vendor they first gave their birthday through
     birthdayVendorId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Vendor",
@@ -43,6 +42,10 @@ const customerSchema = new mongoose.Schema(
   },
   { timestamps: true },
 );
+
+// Sparse unique index on user — enforces uniqueness only when user is set,
+// allows unlimited documents where user is null (guests)
+customerSchema.index({ user: 1 }, { unique: true, sparse: true });
 
 // Auto-sync hasBirthday flag on save
 customerSchema.pre("save", function (next) {
