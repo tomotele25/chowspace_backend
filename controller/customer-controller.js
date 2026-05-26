@@ -98,7 +98,6 @@ const getOrderHistoryByCustomer = async (req, res) => {
   }
 };
 
-
 const saveBirthday = async (req, res) => {
   try {
     const { phone, month, day, vendorId } = req.body;
@@ -137,6 +136,8 @@ const saveBirthday = async (req, res) => {
         },
         $setOnInsert: {
           phone: normPhone,
+          user: null,
+          email: null,
         },
       },
       { upsert: true, new: true },
