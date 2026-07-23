@@ -1,5 +1,5 @@
 const Vendor = require("../models/vendor");
-const { getEffectiveStatus } = require("../utils/storeHours");
+const { getEffectiveStatus } = require("../utils/Storehours");
 
 const WEEKDAYS = [
   "Monday",
