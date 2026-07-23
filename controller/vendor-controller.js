@@ -7,6 +7,7 @@ const Wallet = require("../models/wallet");
 const axios = require("axios");
 const Order = require("../models/order");
 const cron = require("node-cron");
+
 const BANK_CODES = {
   "Access Bank": "044",
   EcoBank: "050",
@@ -41,7 +42,6 @@ const createVendor = async (req, res) => {
     email,
     paymentPreference,
   } = req.body;
-
   try {
     if (
       !email ||
@@ -59,17 +59,14 @@ const createVendor = async (req, res) => {
         message: "All required fields must be provided",
       });
     }
-
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res
         .status(400)
         .json({ success: false, message: "User already exists" });
     }
-
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
-
     const newUser = await User.create({
       fullname,
       email,
@@ -78,9 +75,7 @@ const createVendor = async (req, res) => {
       role: "vendor",
       paymentPreference,
     });
-
     const slug = slugify(businessName, { lower: true, strict: true });
-
     const newVendor = await Vendor.create({
       user: newUser._id,
       slug,
@@ -95,7 +90,6 @@ const createVendor = async (req, res) => {
       password: hashedPassword,
       paymentPreference,
     });
-
     res.status(200).json({
       success: true,
       message: "Account created successfully",
@@ -126,15 +120,13 @@ const createVendor = async (req, res) => {
 const getAllVendor = async (req, res) => {
   try {
     const now = new Date();
-
     const promotedVendors = await Vendor.find(
       {
         isPromoted: true,
         promotionExpiresAt: { $gt: now },
       },
-      "businessName isPromoted promotionExpiresAt paymentPreference averageRating  logo location address category status slug deliveryDuration createdAt"
+      "businessName isPromoted promotionExpiresAt paymentPreference averageRating  logo location address category status slug deliveryDuration createdAt coverImages",
     ).sort({ promotionExpiresAt: 1 });
-
     const regularVendors = await Vendor.find(
       {
         $or: [
@@ -144,16 +136,13 @@ const getAllVendor = async (req, res) => {
       },
       "businessName isPromoted promotionExpiresAt averageRating logo location address category status slug accountNumber bankName subaccountId deliveryDuration createdAt",
     );
-
     const vendors = [...promotedVendors, ...regularVendors];
-
     if (vendors.length === 0) {
       return res.status(404).json({
         success: false,
         message: "No vendors found",
       });
     }
-
     return res.status(200).json({
       success: true,
       message: "Vendors successfully found",
@@ -185,9 +174,7 @@ const getVendorBySlug = async (req, res) => {
 const getVendorStatus = async (req, res) => {
   try {
     const user = req.user;
-
     let vendorId;
-
     if (req.params.vendorId) {
       vendorId = req.params.vendorId;
     } else if (user.role === "vendor") {
@@ -205,15 +192,12 @@ const getVendorStatus = async (req, res) => {
         .status(403)
         .json({ success: false, message: "Unauthorized role" });
     }
-
     const vendor = await Vendor.findById(vendorId).select("status");
-
     if (!vendor) {
       return res
         .status(404)
         .json({ success: false, message: "Vendor not found" });
     }
-
     res.status(200).json({ success: true, status: vendor.status });
   } catch (err) {
     console.error("Error fetching vendor status:", err);
@@ -224,21 +208,17 @@ const getVendorStatus = async (req, res) => {
 const getVendorStatusById = async (req, res) => {
   try {
     const vendorId = req.params.vendorId;
-
     if (!vendorId) {
       return res
         .status(400)
         .json({ success: false, message: "Vendor ID is required" });
     }
-
     const vendor = await Vendor.findById(vendorId).select("status");
-
     if (!vendor) {
       return res
         .status(404)
         .json({ success: false, message: "Vendor not found" });
     }
-
     res.status(200).json({ success: true, status: vendor.status });
   } catch (error) {
     console.error("Error fetching vendor status:", error);
@@ -267,37 +247,30 @@ const getTotalCountOfVendor = async (req, res) => {
 
 const toggleVendorStatus = async (req, res) => {
   const { status } = req.body;
-
   if (!["opened", "closed"].includes(status)) {
     return res.status(400).json({ success: false, message: "Invalid status" });
   }
-
   try {
     let vendorId;
-
     if (req.user.role === "manager") {
       // Find vendor linked to manager
       const managerDoc = await Manager.findOne({ user: req.user._id }).populate(
-        "vendor"
+        "vendor",
       );
-
       if (!managerDoc || !managerDoc.vendor) {
         return res
           .status(404)
           .json({ success: false, message: "Vendor not found for manager" });
       }
-
       vendorId = managerDoc.vendor._id;
     } else if (req.user.role === "vendor") {
       // Find vendor linked to vendor user
       const vendorDoc = await Vendor.findOne({ user: req.user._id });
-
       if (!vendorDoc) {
         return res
           .status(404)
           .json({ success: false, message: "Vendor not found" });
       }
-
       vendorId = vendorDoc._id;
     } else {
       return res.status(403).json({
@@ -306,20 +279,17 @@ const toggleVendorStatus = async (req, res) => {
           "Unauthorized: Only managers or vendors can perform this action",
       });
     }
-
     // Update vendor status
     const updatedVendor = await Vendor.findByIdAndUpdate(
       vendorId,
       { status },
-      { new: true }
+      { new: true },
     );
-
     if (!updatedVendor) {
       return res
         .status(404)
         .json({ success: false, message: "Vendor not found" });
     }
-
     res.status(200).json({
       success: true,
       message: `Store is now ${status}`,
@@ -331,20 +301,30 @@ const toggleVendorStatus = async (req, res) => {
   }
 };
 
+/**
+ * PUT /api/vendor/profile/update
+ *
+ * Expects multipart/form-data. File fields (via upload.fields, see route):
+ *   - logo: single file
+ *   - coverImages: up to 2 files
+ *
+ * To let a vendor keep some existing cover images while adding/replacing
+ * others, the frontend can send a JSON-stringified array of URLs to keep
+ * under `existingCoverImages`. New uploads are appended to that list and
+ * the combined result is capped at 2 (matches the schema validator).
+ */
 const updateVendorProfile = async (req, res) => {
   try {
     const user = req.user;
     if (!user?.vendorId) {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
-
     const vendor = await Vendor.findById(user.vendorId);
     if (!vendor) {
       return res
         .status(404)
         .json({ success: false, message: "Vendor not found" });
     }
-
     const {
       businessName,
       contact,
@@ -355,6 +335,7 @@ const updateVendorProfile = async (req, res) => {
       bankName,
       deliveryDuration,
       paymentPreference,
+      existingCoverImages,
     } = req.body;
 
     const vendorUpdate = {};
@@ -364,14 +345,38 @@ const updateVendorProfile = async (req, res) => {
     if (address) vendorUpdate.address = address;
     if (paymentPreference) vendorUpdate.paymentPreference = paymentPreference;
     if (deliveryDuration) vendorUpdate.deliveryDuration = deliveryDuration;
-    if (req.file && req.file.path) vendorUpdate.logo = req.file.path;
+
+    // Logo — single file, upload.fields puts it under req.files.logo[0]
+    const logoFile = req.files?.logo?.[0];
+    if (logoFile?.path) vendorUpdate.logo = logoFile.path;
+
+    // Cover images — merge kept existing URLs with newly uploaded files,
+    // capped at 2
+    const coverImageFiles = req.files?.coverImages || [];
+    if (existingCoverImages || coverImageFiles.length > 0) {
+      let keptImages = [];
+      if (existingCoverImages) {
+        try {
+          const parsed = JSON.parse(existingCoverImages);
+          if (Array.isArray(parsed)) {
+            keptImages = parsed.filter((url) => typeof url === "string");
+          }
+        } catch (e) {
+          return res.status(400).json({
+            success: false,
+            message: "existingCoverImages must be a valid JSON array",
+          });
+        }
+      }
+      const newImages = coverImageFiles.map((f) => f.path);
+      vendorUpdate.coverImages = [...keptImages, ...newImages].slice(0, 2);
+    }
 
     const userUpdate = {};
     if (password) {
       const salt = await bcrypt.genSalt(10);
       userUpdate.password = await bcrypt.hash(password, salt);
     }
-
     if (!vendor.subaccountId && accountNumber && bankName) {
       const bankCode = getBankCode(bankName);
       if (!bankCode) {
@@ -379,7 +384,6 @@ const updateVendorProfile = async (req, res) => {
           .status(400)
           .json({ success: false, message: "Invalid bank name" });
       }
-
       const paystackRes = await axios.post(
         "https://api.paystack.co/subaccount",
         {
@@ -392,24 +396,20 @@ const updateVendorProfile = async (req, res) => {
           headers: {
             Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
           },
-        }
+        },
       );
-
       vendorUpdate.accountNumber = accountNumber;
       vendorUpdate.bankName = bankName;
       vendorUpdate.subaccountId = paystackRes.data.data.subaccount_code;
     }
-
     const updatedVendor = await Vendor.findByIdAndUpdate(
       user.vendorId,
       { $set: vendorUpdate },
-      { new: true }
+      { new: true, runValidators: true },
     );
-
     if (password) {
       await User.findByIdAndUpdate(user._id, { $set: userUpdate });
     }
-
     return res.json({ success: true, vendor: updatedVendor });
   } catch (err) {
     console.error("Update vendor error", err);
@@ -424,21 +424,17 @@ const updateVendorProfile = async (req, res) => {
 const getVendorWallet = async (req, res) => {
   try {
     const vendorId = req.user.vendorId;
-
     if (!vendorId) {
       return res
         .status(400)
         .json({ success: false, message: "Vendor ID not provided" });
     }
-
     const wallet = await Wallet.findOne({ vendorId });
-
     if (!wallet) {
       return res
         .status(404)
         .json({ success: false, message: "Wallet not found for this vendor" });
     }
-
     res.status(200).json({
       success: true,
       message: "Wallet successfully fetched",
@@ -455,30 +451,25 @@ const getVendorWallet = async (req, res) => {
 
 const getVendorDailyIncome = async (req, res) => {
   const { vendorId, date } = req.query;
-
   if (!vendorId || !date) {
     return res.status(400).json({
       success: false,
       message: "Vendor ID and date are required",
     });
   }
-
   try {
     const start = new Date(date);
     const end = new Date(date);
     end.setHours(23, 59, 59, 999);
-
     const orders = await Order.find({
       vendorId,
       paymentStatus: "paid",
       createdAt: { $gte: start, $lte: end },
     });
-
     const totalIncome = orders.reduce(
       (sum, order) => sum + order.totalAmount,
-      0
+      0,
     );
-
     return res.status(200).json({
       success: true,
       vendorId,
@@ -499,53 +490,44 @@ const getVendorDailyIncome = async (req, res) => {
 const rateVendor = async (req, res) => {
   const { vendorId, comment, stars } = req.body;
   const customerId = req.user._id;
-
   if (!stars || stars < 1 || stars > 5) {
     return res.status(400).json({ message: "Invalid star rating." });
   }
-
   const vendor = await Vendor.findById(vendorId);
   if (!vendor) return res.status(404).json({ message: "Vendor not found." });
-
   const existingRating = vendor.ratings.find(
-    (r) => r.customerId.toString() === customerId
+    (r) => r.customerId.toString() === customerId,
   );
   if (existingRating) {
     return res
       .status(400)
       .json({ message: "You've already rated this vendor." });
   }
-
   vendor.ratings.push({ customerId, stars, comment });
-
   const totalStars = vendor.ratings.reduce((sum, r) => sum + r.stars, 0);
   vendor.averageRating =
     Math.round((totalStars / vendor.ratings.length) * 10) / 10;
   await vendor.save();
-
   return res.status(200).json({ message: "Rating submitted successfully." });
 };
 
 const getReviews = async (req, res) => {
   try {
     const { vendorId } = req.params;
-
     const vendor = await Vendor.findById(vendorId).select("ratings");
-
     if (!vendor) {
       return res.status(404).json({ message: "Vendor not found" });
     }
-
     return res.status(200).json({ reviews: vendor.ratings });
   } catch (error) {
     console.error("Error fetching reviews:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 };
+
 const initPromotePayment = async (req, res) => {
   try {
     const { email, amount, vendorId, tier } = req.body;
-
     const response = await axios.post(
       "https://api.paystack.co/transaction/initialize",
       {
@@ -562,9 +544,8 @@ const initPromotePayment = async (req, res) => {
           Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
           "Content-Type": "application/json",
         },
-      }
+      },
     );
-
     return res.status(200).json({
       success: true,
       authorization_url: response.data.data.authorization_url,
@@ -574,34 +555,30 @@ const initPromotePayment = async (req, res) => {
     res.status(500).json({ error: "Payment initialization failed" });
   }
 };
+
 const verifyPromotePayment = async (req, res) => {
   try {
     const { reference } = req.body;
-
     const response = await axios.get(
       `https://api.paystack.co/transaction/verify/${reference}`,
       {
         headers: {
           Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
         },
-      }
+      },
     );
-
     const data = response.data.data;
-
     if (data.status === "success") {
       const vendorId = data.metadata.vendorId;
       const tier = data.metadata.tier;
-
       const expiresAt = new Date(
-        Date.now() + (tier === "basic" ? 7 : 30) * 24 * 60 * 60 * 1000
+        Date.now() + (tier === "basic" ? 7 : 30) * 24 * 60 * 60 * 1000,
       );
       await Vendor.findByIdAndUpdate(vendorId, {
         isPromoted: true,
         promotionExpiresAt: expiresAt,
         promotionTier: tier,
       });
-
       return res
         .status(200)
         .json({ success: true, message: "Vendor promoted successfully" });
@@ -616,26 +593,20 @@ const verifyPromotePayment = async (req, res) => {
   }
 };
 
-
-
 const getOpeningHours = async (req, res) => {
   try {
     const vendorId = req.params.vendorId;
-
     if (!vendorId) {
       return res
         .status(400)
         .json({ success: false, message: "Vendor ID is required" });
     }
-
     const vendor = await Vendor.findById(vendorId).select("openingHours");
-
     if (!vendor || !vendor.openingHours) {
       return res
         .status(404)
         .json({ success: false, message: "Opening hours not available" });
     }
-
     res.status(200).json({
       success: true,
       message: "Opening hours found",
@@ -646,8 +617,6 @@ const getOpeningHours = async (req, res) => {
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
-
-
 
 module.exports = {
   createVendor,
@@ -665,5 +634,4 @@ module.exports = {
   initPromotePayment,
   verifyPromotePayment,
   getReviews,
-
 };

@@ -35,6 +35,14 @@ const vendorSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    coverImages: {
+      type: [String],
+      default: [],
+      validate: {
+        validator: (arr) => arr.length <= 2,
+        message: "You can only have up to 2 cover images.",
+      },
+    },
     contact: {
       type: String,
       required: true,
@@ -44,10 +52,6 @@ const vendorSchema = new mongoose.Schema(
       required: true,
     },
     password: {
-      type: String,
-      required: true,
-    },
-    category: {
       type: String,
       required: true,
     },
@@ -91,6 +95,10 @@ const vendorSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    inAppChat: {
+      type: Boolean,
+      default: false,
+    },
     promotionExpiresAt: {
       type: Date,
       default: null,
@@ -111,6 +119,16 @@ const vendorSchema = new mongoose.Schema(
         fee: { type: Number, required: true },
       },
     ],
+
+    // ── Store hours ──
+    useAutoHours: {
+      type: Boolean,
+      default: false,
+    },
+    timezone: {
+      type: String,
+      default: "Africa/Lagos",
+    },
     openingHours: [
       {
         day: {
@@ -126,12 +144,14 @@ const vendorSchema = new mongoose.Schema(
           ],
           required: true,
         },
-        open: { type: String, required: true },
-        close: { type: String, required: true },
+        closed: { type: Boolean, default: false },
+        // Not required — a closed day has no meaningful open/close time
+        open: { type: String, default: null },
+        close: { type: String, default: null },
       },
     ],
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 module.exports = mongoose.model("Vendor", vendorSchema);

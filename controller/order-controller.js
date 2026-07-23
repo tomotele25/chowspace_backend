@@ -7,9 +7,12 @@ const { orderConfirmationEmail } = require("../mailer");
 const Customer = require("../models/customer");
 const crypto = require("crypto");
 
-const { MoneiSDK } = require("monei-sdk");
-const monei = new MoneiSDK( process.env.MONEI_SECRET_KEY );
+const { MoneiSDK, DepositMethodsEnum } = require("monei-sdk");
 
+// FIX: SDK expects an options object with `apiKey`, not a bare string.
+// Confirm which env var name is actually set on Vercel — MONEI_API_KEY
+// or MONEI_SECRET_KEY — and make sure this line matches it exactly.
+const monei = new MoneiSDK({ apiKey: process.env.MONEI_SECRET_KEY });
 
 const initializeMoneiPayment = async (req, res) => {
   try {
@@ -71,14 +74,20 @@ const initializeMoneiPayment = async (req, res) => {
       );
     }
 
-  
-    const deposit = await monei.deposit.initializeDeposit({
-      method: "BANK_TRANSFER",
-      amount: Math.round(Number(amount) * 100), // naira → kobo
-      reference: tx_ref,
-      currency: "NGN",
-      narration: `Order ${pendingOrder._id} — ${vendor.businessName}`,
-    });
+    // FIX: deposit method is a separate first argument (the enum),
+    // not a field nested inside the options object.
+    // NOTE: Monei's amount field is already in naira (not kobo) — confirmed
+    // by the "exceeds ₦50,000 limit" error that only makes sense if a
+    // ₦2,400 charge was being sent as ₦240,000 via a ×100 conversion.
+    const deposit = await monei.deposit.initializeDeposit(
+      DepositMethodsEnum.BANK_TRANSFER,
+      {
+        amount: Number(amount), // naira, as-is — no kobo conversion
+        reference: tx_ref,
+        currency: "NGN",
+        narration: `Order ${pendingOrder._id} — ${vendor.businessName}`,
+      },
+    );
 
     return res.status(200).json({
       success: true,
@@ -95,25 +104,23 @@ const initializeMoneiPayment = async (req, res) => {
         status: deposit.status,
       },
     });
-  }  catch (error) {
-  console.error("Monei init error FULL:", error); 
-  console.error("Monei init error message:", error.message);
-  console.error("Monei init error response:", error.response?.data);
-  console.error("Monei init error stack:", error.stack);
-  return res.status(500).json({
-    success: false,
-    message: "Failed to initialize payment",
-    error: error.message || error.toString(),
-  });
-}
+  } catch (error) {
+    console.error("Monei init error FULL:", error);
+    console.error("Monei init error message:", error.message);
+    console.error("Monei init error response:", error.response?.data);
+    console.error("Monei init error stack:", error.stack);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to initialize payment",
+      error: error.message || error.toString(),
+    });
+  }
 };
-
 
 const verifyMoneiPayment = async (req, res) => {
   const { reference } = req.body;
 
   try {
-    // 👉 Real SDK method is getStatus (not verify)
     const depositStatus = await monei.deposit.getStatus({ reference });
 
     if (
@@ -127,26 +134,31 @@ const verifyMoneiPayment = async (req, res) => {
       });
     }
 
-    const order = await Order.findOne({ paymentRef: reference });
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found",
-      });
-    }
+    // FIX: atomic find-and-update guarded on paymentStatus not already
+    // being "paid" — prevents a race with the webhook double-crediting
+    // the vendor wallet if both land around the same time.
+    const order = await Order.findOneAndUpdate(
+      { paymentRef: reference, paymentStatus: { $ne: "paid" } },
+      { $set: { paymentStatus: "paid" } },
+      { new: false }, // returns the PRE-update doc, or null if no match
+    );
 
-    // Guard against double-processing
-    if (order.paymentStatus === "paid") {
+    if (!order) {
+      // Either the order doesn't exist, or it was already marked paid
+      // by the webhook — figure out which so we return the right response.
+      const existing = await Order.findOne({ paymentRef: reference });
+      if (!existing) {
+        return res.status(404).json({
+          success: false,
+          message: "Order not found",
+        });
+      }
       return res.status(200).json({
         success: true,
         message: "Payment already verified",
-        order,
+        order: existing,
       });
     }
-
-    // Update payment status
-    order.paymentStatus = "paid";
-    await order.save();
 
     // 👉 Send confirmation email
     try {
@@ -164,7 +176,7 @@ const verifyMoneiPayment = async (req, res) => {
     // 👉 Credit vendor wallet
     const wallet = await Wallet.findOne({ vendorId: order.vendorId });
     if (wallet) {
-      const amountPaid = depositStatus.amount / 100; // kobo → naira
+      const amountPaid = depositStatus.amount; // already in naira
       wallet.balance += amountPaid;
       wallet.transactions.unshift({
         type: "credit",
@@ -174,6 +186,7 @@ const verifyMoneiPayment = async (req, res) => {
       await wallet.save();
     }
 
+    order.paymentStatus = "paid"; // already set in DB; keeps returned object in sync
     return res.status(200).json({
       success: true,
       message: "Payment verified",
@@ -188,29 +201,63 @@ const verifyMoneiPayment = async (req, res) => {
   }
 };
 
-
+// FIX: this route MUST be mounted with express.raw() before express.json()
+// in server.js, e.g.:
+//   app.post("/api/orders/monei/webhook", express.raw({ type: "application/json" }), moneiWebhook);
+// so req.body arrives as a raw Buffer for HMAC verification below.
+// Confirm the exact header name + signing scheme against docs.monei.cc's
+// webhooks page — "monei-signature" and MONEI_WEBHOOK_SECRET are placeholders.
 const moneiWebhook = async (req, res) => {
   try {
-    const event = req.body;
+    const signature = req.headers["monei-signature"];
+    const webhookSecret = process.env.MONEI_WEBHOOK_SECRET;
+
+    if (!signature || !webhookSecret) {
+      console.error("Monei webhook: missing signature or webhook secret");
+      return res.status(401).json({ received: false });
+    }
+
+    const expected = crypto
+      .createHmac("sha256", webhookSecret)
+      .update(req.body) // raw Buffer — see note above
+      .digest("hex");
+
+    const sigBuf = Buffer.from(signature, "utf8");
+    const expBuf = Buffer.from(expected, "utf8");
+
+    if (
+      sigBuf.length !== expBuf.length ||
+      !crypto.timingSafeEqual(sigBuf, expBuf)
+    ) {
+      console.error("Monei webhook: invalid signature");
+      return res.status(401).json({ received: false });
+    }
+
+    const event = JSON.parse(req.body.toString("utf8"));
 
     if (event.status !== "COMPLETED" && event.status !== "SUCCESS") {
       return res.status(200).json({ received: true });
     }
 
     const reference = event.reference;
-    const order = await Order.findOne({ paymentRef: reference });
 
-    if (!order || order.paymentStatus === "paid") {
-      return res.status(200).json({ received: true });
+    // FIX: same atomic guard as verifyMoneiPayment, so whichever of
+    // (client verify call / webhook) arrives first "wins" and the
+    // other becomes a safe no-op instead of double-crediting the wallet.
+    const order = await Order.findOneAndUpdate(
+      { paymentRef: reference, paymentStatus: { $ne: "paid" } },
+      { $set: { paymentStatus: "paid" } },
+      { new: false },
+    );
+
+    if (!order) {
+      return res.status(200).json({ received: true }); // not found, or already paid
     }
 
-    order.paymentStatus = "paid";
-    await order.save();
-
-    // Credit vendor wallet
+    // 👉 Credit vendor wallet
     const wallet = await Wallet.findOne({ vendorId: order.vendorId });
     if (wallet) {
-      const amountPaid = event.amount / 100;
+      const amountPaid = event.amount; // already in naira
       wallet.balance += amountPaid;
       wallet.transactions.unshift({
         type: "credit",
@@ -220,7 +267,7 @@ const moneiWebhook = async (req, res) => {
       await wallet.save();
     }
 
-    // Send confirmation email
+    // 👉 Send confirmation email
     try {
       const emailAddress = order.guestInfo?.email || order.customerInfo?.email;
       if (emailAddress) {
@@ -239,7 +286,6 @@ const moneiWebhook = async (req, res) => {
     return res.status(500).json({ success: false, message: "Webhook error" });
   }
 };
-
 
 const createOrder = async (req, res) => {
   const {
@@ -292,7 +338,6 @@ const createOrder = async (req, res) => {
   }
 };
 
-
 const priceConfirmation = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -323,7 +368,6 @@ const priceConfirmation = async (req, res) => {
   }
 };
 
-
 const getAllOrders = async (req, res) => {
   const { vendorId } = req.query;
 
@@ -344,7 +388,6 @@ const getAllOrders = async (req, res) => {
   }
 };
 
-
 const getOrderById = async (req, res) => {
   const { orderId } = req.params;
 
@@ -358,7 +401,6 @@ const getOrderById = async (req, res) => {
     res.status(500).json({ message: "Failed to fetch order." });
   }
 };
-
 
 const updateOrderStatus = async (req, res) => {
   const { orderId } = req.params;
@@ -378,7 +420,6 @@ const updateOrderStatus = async (req, res) => {
     res.status(500).json({ message: "Failed to update order." });
   }
 };
-
 
 const getManagerOrders = async (req, res) => {
   try {
@@ -410,7 +451,6 @@ const getManagerOrders = async (req, res) => {
   }
 };
 
-
 const cleanupPendingOrders = async (req, res) => {
   try {
     const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
@@ -433,7 +473,6 @@ const cleanupPendingOrders = async (req, res) => {
     });
   }
 };
-
 
 const getAllOrdersForAdmin = async (req, res) => {
   try {
