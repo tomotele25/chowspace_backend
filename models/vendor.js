@@ -161,6 +161,40 @@ const vendorSchema = new mongoose.Schema(
       status: { type: String, enum: ["opened", "closed"] },
       expiresAt: { type: Date },
     },
+
+    // ── Verification ──
+    // Tier 2: Nigerian business documents, reviewed by an admin. Required
+    // before a self-signed-up vendor can be seen by customers. The 41 vendors
+    // that predate self-signup are grandfathered straight to "approved".
+    verificationStatus: {
+      type: String,
+      enum: ["awaiting_documents", "under_review", "approved", "rejected"],
+      default: "awaiting_documents",
+    },
+    verificationDocuments: [
+      {
+        kind: {
+          type: String,
+          enum: ["cac", "identification", "proof_of_address"],
+          required: true,
+        },
+        url: { type: String, required: true },
+        uploadedAt: { type: Date, default: Date.now },
+      },
+    ],
+    // Shown to the vendor when rejected, so they know what to fix.
+    reviewNote: { type: String },
+    reviewedAt: { type: Date },
+    reviewedBy: { type: mongoose.Types.ObjectId, ref: "User" },
+
+    // Which payment methods this vendor offers their customers. Multi-select.
+    // Supersedes paymentPreference, which is kept because login and the vendor
+    // list still return it; removing it is unrelated churn.
+    paymentMethods: {
+      type: [String],
+      enum: ["whatsapp", "paystack", "monei"],
+      default: ["whatsapp"],
+    },
   },
   { timestamps: true },
 );

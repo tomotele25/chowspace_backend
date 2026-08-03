@@ -2,6 +2,7 @@ const Product = require("../models/product");
 const Vendor = require("../models/vendor");
 const Manager = require("../models/manager");
 const product = require("../models/product");
+const { isPubliclyVisible } = require("../utils/vendorVisibility");
 
 // Create a product
 const createProduct = async (req, res) => {
@@ -260,6 +261,13 @@ const getProductsByVendorSlug = async (req, res) => {
     const products = await Product.find({ vendor: vendor._id }).sort({
       position: 1,
     });
+
+    // Feeds the public storefront, so it respects the same gate as the vendor
+    // list — otherwise a pending vendor's menu stays reachable by slug even
+    // though they're hidden everywhere else.
+    if (!isPubliclyVisible(vendor, products.length)) {
+      return res.status(404).json({ message: "Vendor not found" });
+    }
 
     res.status(200).json({ success: true, vendor, products });
   } catch (error) {

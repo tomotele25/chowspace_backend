@@ -36,6 +36,14 @@ const upload = require("../middleware/upload");
 const protectVendor = require("../middleware/isVendor");
 const protect = require("../middleware/auth");
 const verifyCustomer = require("../middleware/customers");
+const adminAuth = require("../middleware/adminAuth");
+const { uploadDocuments } = require("../middleware/documentUpload");
+const {
+  getVerificationStatus,
+  uploadVerificationDocuments,
+  listVerifications,
+  decideVerification,
+} = require("../controller/vendorVerification-controller");
 
 /* ══════════════════════════════════════════
    Vendor — core
@@ -47,6 +55,26 @@ router.get("/vendor/:slug", getVendorBySlug);
 router.get("/getVendorStatus", protect, getVendorStatus);
 router.get("/getVendorStatusById/:vendorId", getVendorStatusById);
 router.get("/getVendorWallet", protectVendor, getVendorWallet);
+
+/* ══════════════════════════════════════════
+   Verification
+   ══════════════════════════════════════════ */
+// Vendor-facing — available throughout review, so they can keep setting up.
+router.get("/vendor/verification/status", protect, getVerificationStatus);
+router.post(
+  "/vendor/verification/documents",
+  protect,
+  uploadDocuments,
+  uploadVerificationDocuments,
+);
+
+// Admin review queue.
+router.get("/admin/verifications", adminAuth, listVerifications);
+router.patch(
+  "/admin/verifications/:vendorId",
+  adminAuth,
+  decideVerification,
+);
 router.put("/vendor/toggleStatus", protect, toggleVendorStatus);
 router.put(
   "/vendor/profile/update",

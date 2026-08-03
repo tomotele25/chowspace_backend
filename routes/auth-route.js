@@ -1,5 +1,10 @@
 const express = require("express");
-const { login, signup } = require("../controller/auth-controller");
+const {
+  login,
+  signup,
+  verifyEmail,
+  resendVerification,
+} = require("../controller/auth-controller");
 const router = express.Router();
 const rateLimit = require("express-rate-limit");
 
@@ -21,7 +26,21 @@ const registerLimiter = rateLimit({
   },
 });
 
+// Clicked from an email, so it redirects to a page rather than returning JSON.
+router.get("/auth/verify-email", verifyEmail);
+
+// Tighter than registration — this one sends mail on every call.
+const resendLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 3,
+  message: {
+    status: 429,
+    error: "Too many requests. Please wait a few minutes and try again.",
+  },
+});
+
 router.post("/auth/user/signup", registerLimiter, signup);
 router.post("/auth/user/login", loginLimiter, login);
+router.post("/auth/resend-verification", resendLimiter, resendVerification);
 
 module.exports = router;

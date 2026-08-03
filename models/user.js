@@ -40,6 +40,23 @@ const userSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
+
+    // ── Email confirmation ──
+    // Vendors sign up themselves now, so the address has to be proven before
+    // they can log in — it's the only way to reach them about verification.
+    emailVerified: {
+      type: Boolean,
+      default: false,
+    },
+    // select:false so the token never rides along on an incidental read.
+    emailVerifyToken: {
+      type: String,
+      select: false,
+    },
+    emailVerifyExpires: {
+      type: Date,
+      select: false,
+    },
   },
   {
     timestamps: true,

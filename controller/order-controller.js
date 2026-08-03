@@ -14,7 +14,9 @@ const { MoneiSDK, DepositMethodsEnum } = require("monei-sdk");
 // or MONEI_SECRET_KEY — and make sure this line matches it exactly.
 const monei = new MoneiSDK({ apiKey: process.env.MONEI_SECRET_KEY });
 
+const Product = require("../models/product");
 const { getEffectiveStatus } = require("../utils/Storehours");
+const { isPubliclyVisible } = require("../utils/vendorVisibility");
 
 /**
  * Refuses an order when the vendor's store is shut.
@@ -28,13 +30,25 @@ const { getEffectiveStatus } = require("../utils/Storehours");
  */
 const rejectIfClosed = async (vendorId, res) => {
   const vendor = await Vendor.findById(vendorId).select(
-    "businessName status openingHours timezone useAutoHours statusOverride",
+    "businessName status openingHours timezone useAutoHours statusOverride verificationStatus logo",
   );
 
   if (!vendor) {
     return res
       .status(404)
       .json({ success: false, message: "Vendor not found" });
+  }
+
+  // Not verified, or storefront incomplete — they shouldn't have been
+  // reachable at all, so this is a backstop against a stale page or a
+  // hand-crafted request.
+  const productCount = await Product.countDocuments({ vendor: vendor._id });
+  if (!isPubliclyVisible(vendor, productCount)) {
+    return res.status(409).json({
+      success: false,
+      code: "VENDOR_NOT_LIVE",
+      message: `${vendor.businessName} isn't accepting orders yet.`,
+    });
   }
 
   if (getEffectiveStatus(vendor) !== "opened") {
@@ -76,14 +90,9 @@ const initializeMoneiPayment = async (req, res) => {
     }
 
     // Guard the paid path too — this creates a pending order, so skipping the
-    // check here would let a customer pay a closed store.
-    if (getEffectiveStatus(vendor) !== "opened") {
-      return res.status(409).json({
-        success: false,
-        code: "VENDOR_CLOSED",
-        message: `${vendor.businessName} is closed right now and can't take orders.`,
-      });
-    }
+    // check here would let a customer pay a store that is closed or not yet live.
+    const blocked = await rejectIfClosed(vendorId, res);
+    if (blocked) return blocked;
 
     const newOrderData = {
       orderId: tx_ref,
