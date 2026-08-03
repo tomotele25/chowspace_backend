@@ -14,6 +14,40 @@ const { MoneiSDK, DepositMethodsEnum } = require("monei-sdk");
 // or MONEI_SECRET_KEY — and make sure this line matches it exactly.
 const monei = new MoneiSDK({ apiKey: process.env.MONEI_SECRET_KEY });
 
+const { getEffectiveStatus } = require("../utils/Storehours");
+
+/**
+ * Refuses an order when the vendor's store is shut.
+ *
+ * Nothing enforced this before — "closed" was decorative on the backend, and
+ * a customer who loaded a menu at 8:59pm could still submit at 9:05pm. Now
+ * that every vendor runs on a schedule that actually closes them, this is what
+ * makes closing time mean something.
+ *
+ * Returns a response when it rejects, or null when the order may proceed.
+ */
+const rejectIfClosed = async (vendorId, res) => {
+  const vendor = await Vendor.findById(vendorId).select(
+    "businessName status openingHours timezone useAutoHours statusOverride",
+  );
+
+  if (!vendor) {
+    return res
+      .status(404)
+      .json({ success: false, message: "Vendor not found" });
+  }
+
+  if (getEffectiveStatus(vendor) !== "opened") {
+    return res.status(409).json({
+      success: false,
+      code: "VENDOR_CLOSED",
+      message: `${vendor.businessName} is closed right now and can't take orders.`,
+    });
+  }
+
+  return null;
+};
+
 const initializeMoneiPayment = async (req, res) => {
   try {
     const {
@@ -38,6 +72,16 @@ const initializeMoneiPayment = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Vendor not found",
+      });
+    }
+
+    // Guard the paid path too — this creates a pending order, so skipping the
+    // check here would let a customer pay a closed store.
+    if (getEffectiveStatus(vendor) !== "opened") {
+      return res.status(409).json({
+        success: false,
+        code: "VENDOR_CLOSED",
+        message: `${vendor.businessName} is closed right now and can't take orders.`,
       });
     }
 
@@ -313,6 +357,9 @@ const createOrder = async (req, res) => {
   }
 
   try {
+    const closed = await rejectIfClosed(vendorId, res);
+    if (closed) return closed;
+
     const confirmationToken = crypto.randomBytes(16).toString("hex");
 
     const newOrder = await Order.create({

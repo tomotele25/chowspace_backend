@@ -1,3 +1,6 @@
 *.env
 /node_modules
 .vercel
+
+# Pre-deletion snapshots written by scripts/. Real vendor data — keep out of git.
+/scripts/backups

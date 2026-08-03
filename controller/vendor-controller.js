@@ -7,6 +7,10 @@ const Wallet = require("../models/wallet");
 const axios = require("axios");
 const Order = require("../models/order");
 const cron = require("node-cron");
+const {
+  getEffectiveStatus,
+  nextScheduleBoundary,
+} = require("../utils/Storehours");
 
 const BANK_CODES = {
   "Access Bank": "044",
@@ -117,6 +121,17 @@ const createVendor = async (req, res) => {
   }
 };
 
+// The stored `status` field is only refreshed by the hourly cron, so it lags
+// — and the cron may not run at all on Vercel's Hobby tier, which caps crons
+// at one a day. getEffectiveStatus is pure and does no I/O, so computing it
+// per request is free and makes opening at 9am exact.
+const STATUS_FIELDS = "status openingHours timezone useAutoHours statusOverride";
+
+const withLiveStatus = (vendor, at) => ({
+  ...(vendor.toObject ? vendor.toObject() : vendor),
+  status: getEffectiveStatus(vendor, at),
+});
+
 const getAllVendor = async (req, res) => {
   try {
     const now = new Date();
@@ -125,7 +140,7 @@ const getAllVendor = async (req, res) => {
         isPromoted: true,
         promotionExpiresAt: { $gt: now },
       },
-      "businessName isPromoted promotionExpiresAt paymentPreference averageRating  logo location address category status slug deliveryDuration createdAt coverImages",
+      `businessName isPromoted promotionExpiresAt paymentPreference averageRating  logo location address category slug deliveryDuration createdAt coverImages ${STATUS_FIELDS}`,
     ).sort({ promotionExpiresAt: 1 });
     const regularVendors = await Vendor.find(
       {
@@ -134,9 +149,11 @@ const getAllVendor = async (req, res) => {
           { promotionExpiresAt: { $lte: now } },
         ],
       },
-      "businessName isPromoted promotionExpiresAt averageRating logo location address category status slug accountNumber bankName subaccountId deliveryDuration createdAt",
+      `businessName isPromoted promotionExpiresAt averageRating logo location address category slug accountNumber bankName subaccountId deliveryDuration createdAt ${STATUS_FIELDS}`,
     );
-    const vendors = [...promotedVendors, ...regularVendors];
+    const vendors = [...promotedVendors, ...regularVendors].map((v) =>
+      withLiveStatus(v, now),
+    );
     if (vendors.length === 0) {
       return res.status(404).json({
         success: false,
@@ -164,7 +181,7 @@ const getVendorBySlug = async (req, res) => {
     if (!vendor) {
       return res.status(404).json({ message: "Vendor not found" });
     }
-    res.status(200).json({ success: true, vendor });
+    res.status(200).json({ success: true, vendor: withLiveStatus(vendor) });
   } catch (err) {
     console.error("Error fetching vendor by slug:", err);
     res.status(500).json({ message: "Server error" });
@@ -192,13 +209,13 @@ const getVendorStatus = async (req, res) => {
         .status(403)
         .json({ success: false, message: "Unauthorized role" });
     }
-    const vendor = await Vendor.findById(vendorId).select("status");
+    const vendor = await Vendor.findById(vendorId).select(STATUS_FIELDS);
     if (!vendor) {
       return res
         .status(404)
         .json({ success: false, message: "Vendor not found" });
     }
-    res.status(200).json({ success: true, status: vendor.status });
+    res.status(200).json({ success: true, status: getEffectiveStatus(vendor) });
   } catch (err) {
     console.error("Error fetching vendor status:", err);
     res.status(500).json({ success: false, message: "Server error" });
@@ -213,13 +230,13 @@ const getVendorStatusById = async (req, res) => {
         .status(400)
         .json({ success: false, message: "Vendor ID is required" });
     }
-    const vendor = await Vendor.findById(vendorId).select("status");
+    const vendor = await Vendor.findById(vendorId).select(STATUS_FIELDS);
     if (!vendor) {
       return res
         .status(404)
         .json({ success: false, message: "Vendor not found" });
     }
-    res.status(200).json({ success: true, status: vendor.status });
+    res.status(200).json({ success: true, status: getEffectiveStatus(vendor) });
   } catch (error) {
     console.error("Error fetching vendor status:", error);
     res.status(500).json({ success: false, message: "Server error" });
@@ -279,21 +296,30 @@ const toggleVendorStatus = async (req, res) => {
           "Unauthorized: Only managers or vendors can perform this action",
       });
     }
-    // Update vendor status
-    const updatedVendor = await Vendor.findByIdAndUpdate(
-      vendorId,
-      { status },
-      { new: true },
-    );
-    if (!updatedVendor) {
+    const vendor = await Vendor.findById(vendorId);
+    if (!vendor) {
       return res
         .status(404)
         .json({ success: false, message: "Vendor not found" });
     }
+
+    // Every vendor now runs on a schedule, so a bare status write would just
+    // be reverted by the next cron. Record it as an override instead, expiring
+    // at the next scheduled open/close — closing early tonight shouldn't stop
+    // the store opening tomorrow morning.
+    const expiresAt = nextScheduleBoundary(vendor);
+
+    vendor.status = status;
+    vendor.statusOverride = expiresAt ? { status, expiresAt } : undefined;
+    await vendor.save({ validateModifiedOnly: true });
+
     res.status(200).json({
       success: true,
       message: `Store is now ${status}`,
-      vendor: updatedVendor,
+      vendor,
+      // Lets the dashboard say "Closed until 9:00 AM" rather than implying
+      // the change is permanent.
+      overrideUntil: expiresAt || null,
     });
   } catch (err) {
     console.error("Toggle error:", err);
