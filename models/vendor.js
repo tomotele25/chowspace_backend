@@ -121,9 +121,12 @@ const vendorSchema = new mongoose.Schema(
     ],
 
     // ── Store hours ──
+    // On by default: a vendor who never opens Settings should still trade.
+    // With no openingHours set, utils/Storehours.js substitutes the platform
+    // default of 09:00–21:00 rather than leaving the store shut forever.
     useAutoHours: {
       type: Boolean,
-      default: false,
+      default: true,
     },
     timezone: {
       type: String,
@@ -150,6 +153,14 @@ const vendorSchema = new mongoose.Schema(
         close: { type: String, default: null },
       },
     ],
+
+    // Set when a vendor manually flips their store from the dashboard.
+    // Expires at the next scheduled open or close, so closing early once
+    // doesn't silently disable their schedule for good.
+    statusOverride: {
+      status: { type: String, enum: ["opened", "closed"] },
+      expiresAt: { type: Date },
+    },
   },
   { timestamps: true },
 );
