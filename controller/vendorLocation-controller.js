@@ -244,8 +244,8 @@ const createLocationByVendor = async (req, res) => {
 
     let vendorId;
 
-    if (user.role === "vendor") {
-      vendorId = user._id;
+    if (user.role === "vendor" && user.vendorId) {
+      vendorId = user.vendorId;
     } else if (user.role === "manager" && user.vendorId) {
       vendorId = user.vendorId;
     } else {
