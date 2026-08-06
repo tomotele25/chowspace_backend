@@ -7,6 +7,8 @@ const {
   deleteRider,
   assignOrderToRider,
 } = require("../controller/rider-controller");
+const { getQueueStats } = require("../controller/queue-controller");
+const adminAuth = require("../middleware/adminAuth");
 
 const router = express.Router();
 
@@ -21,5 +23,9 @@ router.put("/rider/update/:id", updateRider);
 router.delete("/rider/delete/:id", deleteRider);
 
 router.post("/rider/assign-order", assignOrderToRider);
+
+// Queue depth and recent failures. Behind adminAuth because the failure list
+// carries customer email addresses.
+router.get("/admin/queues", adminAuth, getQueueStats);
 
 module.exports = router;

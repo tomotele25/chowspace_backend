@@ -17,7 +17,7 @@ const {
   isPubliclyVisible,
   productCountsByVendor,
 } = require("../utils/vendorVisibility");
-const { sendVendorVerificationEmail } = require("../mailer");
+const { enqueueEmail } = require("../queues/email");
 
 const BANK_CODES = {
   "Access Bank": "044",
@@ -167,18 +167,18 @@ const createVendor = async (req, res) => {
 
     const link = `${process.env.API_PUBLIC_URL || "https://chowspace-backend.vercel.app"}/api/auth/verify-email?token=${rawToken}`;
 
-    let emailSent = true;
-    try {
-      await sendVendorVerificationEmail(normalisedEmail, {
-        businessName: newVendor.businessName,
-        link,
-      });
-    } catch (err) {
-      // Reported, not swallowed: the vendor cannot log in until they confirm,
-      // so a silent failure would lock them out with no explanation.
-      console.error("Vendor verification email failed:", err.message);
-      emailSent = false;
-    }
+    // Queued rather than awaited, so signup no longer blocks on an SMTP
+    // handshake — and a transient SMTP failure is retried instead of losing
+    // the one email that lets this vendor log in.
+    //
+    // `sent` is true whether the mail was queued or sent inline, so a false
+    // still means nothing went out by any route and the message below stays
+    // accurate.
+    const { sent: emailSent } = await enqueueEmail({
+      template: "vendor-verification",
+      to: normalisedEmail,
+      data: { businessName: newVendor.businessName, link },
+    });
 
     res.status(201).json({
       success: true,

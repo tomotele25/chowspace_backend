@@ -3,7 +3,7 @@ const axios = require("axios");
 const Order = require("../models/order");
 const Vendor = require("../models/vendor");
 const Wallet = require("../models/wallet");
-const { orderConfirmationEmail } = require("../mailer");
+const { enqueueEmail } = require("../queues/email");
 const Customer = require("../models/customer");
 const crypto = require("crypto");
 
@@ -217,10 +217,14 @@ const verifyMoneiPayment = async (req, res) => {
     try {
       const emailAddress = order.guestInfo?.email || order.customerInfo?.email;
       if (emailAddress) {
-        await orderConfirmationEmail(
-          emailAddress,
-          "Your Chowspace Order Has Been Confirmed 🎉",
-        );
+        // Queued: this runs inside the payment webhook, and the provider
+        // retries the whole webhook if we answer slowly — which would credit
+        // the wallet twice. Handing the email off keeps the response quick.
+        await enqueueEmail({
+          template: "order-confirmation",
+          to: emailAddress,
+          data: { subject: "Your Chowspace Order Has Been Confirmed 🎉" },
+        });
       }
     } catch (err) {
       console.error("Email failed:", err);
@@ -324,10 +328,14 @@ const moneiWebhook = async (req, res) => {
     try {
       const emailAddress = order.guestInfo?.email || order.customerInfo?.email;
       if (emailAddress) {
-        await orderConfirmationEmail(
-          emailAddress,
-          "Your Chowspace Order Has Been Confirmed 🎉",
-        );
+        // Queued: this runs inside the payment webhook, and the provider
+        // retries the whole webhook if we answer slowly — which would credit
+        // the wallet twice. Handing the email off keeps the response quick.
+        await enqueueEmail({
+          template: "order-confirmation",
+          to: emailAddress,
+          data: { subject: "Your Chowspace Order Has Been Confirmed 🎉" },
+        });
       }
     } catch (err) {
       console.error("Email failed:", err);

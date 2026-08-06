@@ -4,7 +4,7 @@ const User = require("../models/user");
 const jwt = require("jsonwebtoken");
 const Vendor = require("../models/vendor");
 const crypto = require("crypto");
-const { sendSignupEmail, sendVendorVerificationEmail } = require("../mailer");
+const { enqueueEmail } = require("../queues/email");
 
 const signup = async (req, res) => {
   const { fullname, contact, email, password } = req.body;
@@ -35,11 +35,15 @@ const signup = async (req, res) => {
     });
 
     await newUser.save();
-    try {
-      await sendSignupEmail(email, fullname);
-    } catch (err) {
-      console.error("Email failed:", err);
-    }
+
+    // Queued: a welcome email isn't worth making the customer wait on an SMTP
+    // handshake, and enqueueEmail falls back to sending inline if Redis is
+    // unavailable, so nothing is lost when the queue is down.
+    await enqueueEmail({
+      template: "customer-welcome",
+      to: email,
+      data: { fullname },
+    });
     res.status(201).json({
       success: true,
       message: "User created successfully",
@@ -196,9 +200,10 @@ const resendVerification = async (req, res) => {
 
     const link = `${process.env.API_PUBLIC_URL || "https://chowspace-backend.vercel.app"}/api/auth/verify-email?token=${rawToken}`;
 
-    await sendVendorVerificationEmail(email, {
-      businessName: vendor?.businessName || "your store",
-      link,
+    await enqueueEmail({
+      template: "vendor-verification",
+      to: email,
+      data: { businessName: vendor?.businessName || "your store", link },
     });
 
     return res.status(200).json(generic);

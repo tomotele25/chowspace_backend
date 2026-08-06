@@ -6,7 +6,7 @@ const {
   productCountsByVendor,
   isPubliclyVisible,
 } = require("../utils/vendorVisibility");
-const { sendVerificationDecisionEmail } = require("../mailer");
+const { enqueueEmail } = require("../queues/email");
 
 const REQUIRED_DOCUMENTS = ["cac", "identification", "proof_of_address"];
 
@@ -238,12 +238,18 @@ const decideVerification = async (req, res) => {
 
     const productCount = await Product.countDocuments({ vendor: vendor._id });
 
-    // Best effort — the decision is already saved, so a mail failure must not
-    // fail the request.
-    sendVerificationDecisionEmail(vendor.email, {
-      businessName: vendor.businessName,
-      approved: decision === "approved",
-      reviewNote: vendor.reviewNote,
+    // Already fire-and-forget, since the decision is saved and a mail failure
+    // must not fail the request. Queueing it means it now also gets retried
+    // rather than being lost on the first SMTP hiccup — this is the mail that
+    // tells a vendor they have been approved.
+    enqueueEmail({
+      template: "verification-decision",
+      to: vendor.email,
+      data: {
+        businessName: vendor.businessName,
+        approved: decision === "approved",
+        reviewNote: vendor.reviewNote,
+      },
     }).catch((err) =>
       console.error("Verification decision email failed:", err.message),
     );
