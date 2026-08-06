@@ -48,6 +48,10 @@ app.use(
   }),
 );
 
+// Ahead of express.json(): QStash signs the raw bytes of a job delivery, so
+// that route parses its own body and must not be pre-parsed here.
+app.use("/api", require("../routes/job-route"));
+
 app.use(express.json());
 
 /* ==============================

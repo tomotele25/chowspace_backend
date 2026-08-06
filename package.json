@@ -15,21 +15,19 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "start": "node server.js",
-    "worker": "node worker.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "@monei-js/node-sdk": "^2.0.1",
+    "@upstash/qstash": "^2.11.3",
     "axios": "^1.10.0",
     "bcrypt": "^6.0.0",
-    "bullmq": "^6.0.8",
     "cloudinary": "^1.41.3",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
     "express-rate-limit": "^7.5.1",
     "flutterwave-node-v3": "^1.3.0",
-    "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.2",
     "monei-sdk": "^1.0.8",
     "mongoose": "^8.16.0",
