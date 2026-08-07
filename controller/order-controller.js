@@ -306,39 +306,69 @@ const verifyMoneiPayment = async (req, res) => {
   }
 };
 
-// FIX: this route MUST be mounted with express.raw() before express.json()
-// in server.js, e.g.:
-//   app.post("/api/orders/monei/webhook", express.raw({ type: "application/json" }), moneiWebhook);
-// so req.body arrives as a raw Buffer for HMAC verification below.
-// Confirm the exact header name + signing scheme against docs.monei.cc's
-// webhooks page — "monei-signature" and MONEI_WEBHOOK_SECRET are placeholders.
+/**
+ * Monei calls this when a payment settles.
+ *
+ * Mounted with express.raw() ahead of express.json() so req.body is the exact
+ * bytes Monei sent — see routes/order-router.js.
+ *
+ * The header is `x-monei-signature`, per docs.monei.cc/security/webhooks. The
+ * previous code read `monei-signature`, which no request ever carries, so every
+ * delivery was rejected as unsigned and no payment was ever confirmed by
+ * webhook — leaving confirmation to depend entirely on the customer keeping
+ * their browser open long enough to call verify.
+ *
+ * The secret comes from the Monei dashboard: Settings → Webhooks → Add
+ * Webhook, then copy the secret it shows.
+ */
 const moneiWebhook = async (req, res) => {
   try {
-    const signature = req.headers["monei-signature"];
+    const signature =
+      req.headers["x-monei-signature"] || req.headers["monei-signature"];
     const webhookSecret = process.env.MONEI_WEBHOOK_SECRET;
 
     if (!signature || !webhookSecret) {
-      console.error("Monei webhook: missing signature or webhook secret");
+      console.error(
+        "Monei webhook rejected:",
+        !webhookSecret
+          ? "MONEI_WEBHOOK_SECRET is not set — no payment can be confirmed by webhook"
+          : "no x-monei-signature header",
+      );
       return res.status(401).json({ received: false });
     }
 
-    const expected = crypto
-      .createHmac("sha256", webhookSecret)
-      .update(req.body) // raw Buffer — see note above
-      .digest("hex");
+    const raw = req.body.toString("utf8");
 
-    const sigBuf = Buffer.from(signature, "utf8");
-    const expBuf = Buffer.from(expected, "utf8");
+    // Monei's documented example signs JSON.stringify(payload) — the parsed
+    // body re-serialised. That is normally byte-identical to what was sent,
+    // but not if they ever pretty-print or we sit behind a proxy that
+    // reformats. Both are accepted so a formatting difference cannot silently
+    // reject real payments.
+    const candidates = [raw];
+    try {
+      candidates.push(JSON.stringify(JSON.parse(raw)));
+    } catch {
+      // Unparseable body — the raw comparison below will fail it anyway.
+    }
 
-    if (
-      sigBuf.length !== expBuf.length ||
-      !crypto.timingSafeEqual(sigBuf, expBuf)
-    ) {
+    const sigBuf = Buffer.from(String(signature), "utf8");
+    const matches = candidates.some((body) => {
+      const expBuf = Buffer.from(
+        crypto.createHmac("sha256", webhookSecret).update(body).digest("hex"),
+        "utf8",
+      );
+      return (
+        sigBuf.length === expBuf.length &&
+        crypto.timingSafeEqual(sigBuf, expBuf)
+      );
+    });
+
+    if (!matches) {
       console.error("Monei webhook: invalid signature");
       return res.status(401).json({ received: false });
     }
 
-    const event = JSON.parse(req.body.toString("utf8"));
+    const event = JSON.parse(raw);
 
     if (event.status !== "COMPLETED" && event.status !== "SUCCESS") {
       return res.status(200).json({ received: true });
