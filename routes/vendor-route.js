@@ -36,6 +36,7 @@ const {
   getBanks,
   verifyBankAccount,
   savePayoutAccount,
+  getPayoutAccount,
 } = require("../controller/bank-controller");
 const { uploadDocuments } = require("../middleware/documentUpload");
 const {

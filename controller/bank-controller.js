@@ -57,12 +57,10 @@ const verifyBankAccount = async (req, res) => {
   const { accountNumber, bankCode } = req.body;
 
   if (!accountNumber || !bankCode) {
-    return res
-      .status(400)
-      .json({
-        success: false,
-        message: "Account number and bank are required",
-      });
+    return res.status(400).json({
+      success: false,
+      message: "Account number and bank are required",
+    });
   }
 
   if (!/^\d{10}$/.test(String(accountNumber))) {
@@ -96,6 +94,26 @@ const verifyBankAccount = async (req, res) => {
   }
 };
 
+/** The vendor's current payout account, for the profile card. */
+const getPayoutAccount = async (req, res) => {
+  try {
+    const vendor = await Vendor.findById(req.vendorId).select(
+      "accountNumber bankCode bankName accountName",
+    );
+    return res.status(200).json({
+      success: true,
+      // Null rather than 404 when none is set — "not set up yet" is the normal
+      // state for most vendors, not an error.
+      account: vendor?.accountNumber ? vendor : null,
+    });
+  } catch (err) {
+    console.error("getPayoutAccount error:", err.message);
+    return res
+      .status(500)
+      .json({ success: false, message: "Could not load your payout account" });
+  }
+};
+
 /**
  * Saves the vendor's payout account after verifying it.
  *
@@ -107,12 +125,10 @@ const savePayoutAccount = async (req, res) => {
   const { accountNumber, bankCode } = req.body;
 
   if (!accountNumber || !bankCode) {
-    return res
-      .status(400)
-      .json({
-        success: false,
-        message: "Account number and bank are required",
-      });
+    return res.status(400).json({
+      success: false,
+      message: "Account number and bank are required",
+    });
   }
 
   try {
@@ -159,4 +175,9 @@ const savePayoutAccount = async (req, res) => {
   }
 };
 
-module.exports = { getBanks, verifyBankAccount, savePayoutAccount };
+module.exports = {
+  getBanks,
+  verifyBankAccount,
+  savePayoutAccount,
+  getPayoutAccount,
+};
