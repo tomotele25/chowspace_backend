@@ -192,6 +192,57 @@ const check = (label, ok, detail = "") => {
     `\n${vendorsWithoutWallet} vendors have no wallet document — each would have been skipped by the old \`if (wallet)\` credit.`,
   );
 
+  console.log("\nMonei charge and payout:\n");
+
+  // What the customer is asked to transfer must cover the order AND the
+  // provider's cut, so Chowspace receives the full order total and the
+  // vendor's share is not quietly reduced by someone else's fee.
+  const { MoneiSDK, DepositMethodsEnum } = require("monei-sdk");
+  const monei = new MoneiSDK({ apiKey: process.env.MONEI_SECRET_KEY });
+
+  try {
+    const dep = await monei.deposit.initializeDeposit(
+      DepositMethodsEnum.BANK_TRANSFER,
+      {
+        amount: honest.priced.total,
+        currency: "NGN",
+        reference: `TEST-${Date.now()}`,
+        narration: "money test",
+      },
+    );
+    const customerPays = Number(dep.totalAmount);
+    const providerFee = Number(dep.moneiFee);
+
+    check(
+      "customer is charged the order total plus the provider fee",
+      Math.abs(customerPays - (honest.priced.total + providerFee)) < 0.01,
+      `order ₦${honest.priced.total} + fee ₦${providerFee} = ₦${customerPays}`,
+    );
+    check(
+      "Chowspace receives the full order total",
+      Number(dep.feeBreakdown?.amountToCredit) === honest.priced.total,
+      `credited ₦${dep.feeBreakdown?.amountToCredit}`,
+    );
+    check(
+      "what is left after paying the vendor is exactly the service fee",
+      honest.priced.total - honest.priced.vendorShare ===
+        honest.priced.serviceFee,
+    );
+    console.log(
+      `        customer ₦${customerPays} → Monei ₦${providerFee} → we receive ₦${honest.priced.total} → vendor ₦${honest.priced.vendorShare} → Chowspace ₦${honest.priced.serviceFee}`,
+    );
+  } catch (e) {
+    check("deposit initialization", false, e.message);
+  }
+
+  const payable = await Vendor.countDocuments({
+    accountNumber: { $nin: [null, ""] },
+    bankCode: { $nin: [null, ""] },
+  });
+  console.log(
+    `\n${payable} of ${await Vendor.countDocuments()} vendors can receive an instant payout; the rest are held in their wallet.`,
+  );
+
   console.log(`\n${pass} passed, ${fail} failed.`);
   await mongoose.disconnect();
   process.exit(fail === 0 ? 0 : 1);

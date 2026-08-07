@@ -95,6 +95,23 @@ const orderSchema = new mongoose.Schema(
     // cannot pay twice.
     walletCreditedAt: { type: Date, default: null },
 
+    // What the payment provider charged the customer on top of the order, so
+    // reconciliation can tell our fee apart from theirs.
+    moneiFee: { type: Number, min: 0, default: 0 },
+
+    // Instant payout to the vendor's bank.
+    //   held   — credited to their wallet, nothing sent (usually no bank details)
+    //   paid   — transferred out
+    //   failed — the provider refused; the money is still in their wallet
+    payoutStatus: {
+      type: String,
+      enum: ["none", "held", "paid", "failed"],
+      default: "none",
+    },
+    payoutReference: String,
+    payoutAt: Date,
+    payoutError: String,
+
     rider: { type: mongoose.Schema.Types.ObjectId, ref: "Rider" },
 
     // Indexed but deliberately NOT unique. It should be — it is the reference

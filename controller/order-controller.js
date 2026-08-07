@@ -6,6 +6,7 @@ const Wallet = require("../models/wallet");
 const { enqueueEmail } = require("../queues/email");
 const { creditVendorForOrder } = require("../utils/creditVendor");
 const { priceOrder } = require("../utils/pricing");
+const { payoutVendorForOrder } = require("../utils/moneiPayout");
 const Customer = require("../models/customer");
 const crypto = require("crypto");
 
@@ -96,13 +97,40 @@ const initializeMoneiPayment = async (req, res) => {
     const blocked = await rejectIfClosed(vendorId, res);
     if (blocked) return blocked;
 
+    // The last payment path that still took its amount from the browser.
+    // Repriced here like the direct path, so what the customer is asked to
+    // transfer is decided by our database.
+    const { ok, error, priced } = await priceOrder({
+      vendorId,
+      items: orderPayload.items,
+      deliveryLocation: orderPayload.deliveryLocation,
+      packCount: orderPayload.packCount,
+    });
+    if (!ok) return res.status(400).json({ success: false, message: error });
+
+    if (typeof amount === "number" && priced.total > amount) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Prices changed while you were ordering. Please review your cart.",
+        total: priced.total,
+      });
+    }
+
     const newOrderData = {
       orderId: tx_ref,
       vendorId,
-      items: orderPayload.items,
+      items: priced.lines,
       deliveryMethod: orderPayload.deliveryMethod,
+      deliveryLocation: orderPayload.deliveryLocation || null,
       note: orderPayload.note || "",
-      totalAmount: amount,
+      itemsTotal: priced.itemsTotal,
+      packFees: priced.packFees,
+      deliveryFee: priced.deliveryFee,
+      serviceFee: priced.serviceFee,
+      totalAmount: priced.total,
+      vendorShare: priced.vendorShare,
+      paymentMethod: "monei",
       paymentRef: tx_ref,
       paymentStatus: "pending",
     };
@@ -134,14 +162,28 @@ const initializeMoneiPayment = async (req, res) => {
     // NOTE: Monei's amount field is already in naira (not kobo) — confirmed
     // by the "exceeds ₦50,000 limit" error that only makes sense if a
     // ₦2,400 charge was being sent as ₦240,000 via a ×100 conversion.
+    // `amount` here is what Chowspace must RECEIVE — the order total including
+    // our service fee. Monei adds its own charge (a flat 2.2% at the time of
+    // writing) and returns `totalAmount`, which is what the customer actually
+    // transfers. Taking that figure from the response rather than computing it
+    // means the customer is charged exactly right even if Monei changes its
+    // pricing, and it is the customer who bears the processing fee.
     const deposit = await monei.deposit.initializeDeposit(
       DepositMethodsEnum.BANK_TRANSFER,
       {
-        amount: Number(amount), // naira, as-is — no kobo conversion
+        amount: priced.total, // naira, as-is — no kobo conversion
         reference: tx_ref,
         currency: "NGN",
         narration: `Order ${pendingOrder._id} — ${vendor.businessName}`,
       },
+    );
+
+    const customerPays = Number(deposit.totalAmount ?? deposit.amount);
+    const providerFee = Number(deposit.moneiFee ?? 0);
+
+    await Order.updateOne(
+      { _id: pendingOrder._id },
+      { $set: { moneiFee: providerFee } },
     );
 
     return res.status(200).json({
@@ -153,7 +195,11 @@ const initializeMoneiPayment = async (req, res) => {
         accountNumber: deposit.accountNumber,
         bankName: deposit.bankName,
         accountName: deposit.accountName,
-        amount: deposit.amount,
+        // What to transfer. `orderTotal` and `providerFee` are broken out so
+        // the chat can show why it is more than the basket.
+        amount: customerPays,
+        orderTotal: priced.total,
+        providerFee,
         expiry_datetime: deposit.expiry_datetime,
         note: deposit.note,
         status: deposit.status,
@@ -234,7 +280,16 @@ const verifyMoneiPayment = async (req, res) => {
     // Credits the vendor and marks the order paid in one transaction, creating
     // the wallet if they have never been paid before. Credits vendorShare, so
     // Chowspace's service fee is not handed over with it.
-    await creditVendorForOrder(order._id);
+    const credited = await creditVendorForOrder(order._id);
+
+    // Then move it on to their bank straight away. Deliberately after the
+    // transaction rather than inside it: a bank transfer is a call to another
+    // company and can take seconds, and holding a database transaction open
+    // across that would block writes on the order. If it fails the money stays
+    // in their wallet — see utils/moneiPayout.js.
+    if (credited.credited) {
+      await payoutVendorForOrder(order._id);
+    }
 
     order.paymentStatus = "paid"; // keeps the returned object in sync
     return res.status(200).json({
@@ -307,7 +362,11 @@ const moneiWebhook = async (req, res) => {
     //
     // Whichever of the webhook and the client's verify call arrives first
     // wins; the other becomes a no-op rather than a second payment.
-    await creditVendorForOrder(order._id);
+    const credited = await creditVendorForOrder(order._id);
+
+    if (credited.credited) {
+      await payoutVendorForOrder(order._id);
+    }
 
     // 👉 Send confirmation email
     try {

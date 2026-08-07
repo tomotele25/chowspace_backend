@@ -32,6 +32,11 @@ const {
 
 const upload = require("../middleware/upload");
 const { requireRole } = require("../middleware/requireRole");
+const {
+  getBanks,
+  verifyBankAccount,
+  savePayoutAccount,
+} = require("../controller/bank-controller");
 const { uploadDocuments } = require("../middleware/documentUpload");
 const {
   getVerificationStatus,
@@ -54,6 +59,17 @@ router.get(
 );
 router.get("/getVendorStatusById/:vendorId", getVendorStatusById);
 router.get("/getVendorWallet", requireRole("vendor"), getVendorWallet);
+
+/* ══════════════════════════════════════════
+   Payout account — where a vendor's money is sent
+   ══════════════════════════════════════════ */
+router.get("/banks", requireRole("vendor", "manager"), getBanks);
+router.post(
+  "/vendor/payout-account/verify",
+  requireRole("vendor"),
+  verifyBankAccount,
+);
+router.post("/vendor/payout-account", requireRole("vendor"), savePayoutAccount);
 
 /* ══════════════════════════════════════════
    Verification

@@ -80,6 +80,19 @@ const vendorSchema = new mongoose.Schema(
     // Charged per pack at checkout. It was read by the packing-fee endpoint
     // but never declared, so every write was dropped and the frontend fell
     // back to a hardcoded 300.
+    // The provider's numeric bank code, needed to transfer money out. The
+    // human-readable bankName is not enough — Monei lists 700 banks and the
+    // name alone does not identify one.
+    bankCode: {
+      type: String,
+      default: null,
+    },
+    // The name the bank holds for the account, confirmed at save time. Shown
+    // back to the vendor so a mistyped digit is caught before money moves.
+    accountName: {
+      type: String,
+      default: null,
+    },
     packingFee: {
       type: Number,
       min: 0,
