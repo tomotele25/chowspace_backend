@@ -79,7 +79,6 @@ const createVendor = async (req, res) => {
   try {
     if (
       !email ||
-      !password ||
       !fullname ||
       !businessName ||
       !contact ||
@@ -93,7 +92,17 @@ const createVendor = async (req, res) => {
       });
     }
 
-    if (String(password).length < 8) {
+    // Self-signup sends a password; the admin "create vendor" form does not.
+    // It used to send the literal "vendor123", which lived in the admin page
+    // and therefore in the public JS bundle — so every admin-created account
+    // had the same publicly known password. When none is supplied we generate
+    // one and email it, and nothing on the client ever chooses it.
+    const isInvite = !password;
+    const effectivePassword = isInvite
+      ? crypto.randomBytes(9).toString("base64url")
+      : password;
+
+    if (!isInvite && String(password).length < 8) {
       return res.status(400).json({
         success: false,
         message: "Password must be at least 8 characters",
@@ -124,7 +133,7 @@ const createVendor = async (req, res) => {
     }
 
     const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    const hashedPassword = await bcrypt.hash(effectivePassword, salt);
 
     // Raw token goes in the email; only its hash is stored, so a database leak
     // doesn't hand out working confirmation links.
@@ -180,9 +189,15 @@ const createVendor = async (req, res) => {
     // still means nothing went out by any route and the message below stays
     // accurate.
     const { sent: emailSent } = await enqueueEmail({
-      template: "vendor-verification",
+      template: isInvite ? "vendor-invite" : "vendor-verification",
       to: normalisedEmail,
-      data: { businessName: newVendor.businessName, link },
+      data: {
+        businessName: newVendor.businessName,
+        link,
+        // Only present on the invite path — this is the one place the
+        // generated password is ever disclosed.
+        ...(isInvite ? { tempPassword: effectivePassword } : {}),
+      },
     });
 
     res.status(201).json({

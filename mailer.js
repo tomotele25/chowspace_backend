@@ -123,7 +123,14 @@ const SITE = "https://chowspace.ng";
  * layout must still read with the logo missing — hence the wordmark below it
  * rather than relying on the image alone.
  */
-const emailShell = ({ heading, intro, ctaLabel, ctaHref, body = "", footer = "" }) => `
+const emailShell = ({
+  heading,
+  intro,
+  ctaLabel,
+  ctaHref,
+  body = "",
+  footer = "",
+}) => `
 <div style="margin:0;padding:0;background:${PAGE_BG};">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${PAGE_BG};padding:32px 16px;">
     <tr><td align="center">
@@ -293,8 +300,112 @@ const sendVerificationDecisionEmail = async (
   }
 };
 
+/**
+ * Sent when an admin creates a vendor rather than the vendor signing up.
+ *
+ * Those accounts used to be given the password "vendor123", which was a
+ * literal in the admin page and therefore shipped in the public JS bundle —
+ * so anyone who read the source and guessed an email could sign in. The
+ * password is now random and reaches the vendor only here.
+ */
+const sendVendorInviteEmail = async (
+  to,
+  { businessName, link, tempPassword },
+) => {
+  const mailOptions = {
+    from: '"ChowSpace" <no-reply@chowspace.ng>',
+    to,
+    subject: `Your Chowspace store is ready — sign in to ${businessName}`,
+    text:
+      `A Chowspace store has been created for ${businessName}.
+
+` +
+      `Email: ${to}
+Temporary password: ${tempPassword}
+
+` +
+      `Confirm your email address to sign in: ${link}`,
+    html: emailShell({
+      heading: `Your store ${businessName} is ready`,
+      intro: `We've set up <strong style="color:${INK};">${businessName}</strong> on Chowspace. Confirm this address, then sign in with the temporary password below.`,
+      ctaLabel: "Confirm my email",
+      ctaHref: link,
+      body:
+        panel(
+          "Your sign-in details",
+          `<p style="margin:0 0 6px;font-size:13px;line-height:1.6;color:#374151;">Email<br><strong style="color:${INK};font-size:14px;">${to}</strong></p>
+           <p style="margin:10px 0 0;font-size:13px;line-height:1.6;color:#374151;">Temporary password<br><strong style="color:${INK};font-size:16px;letter-spacing:1px;font-family:ui-monospace,Menlo,monospace;">${tempPassword}</strong></p>`,
+        ) +
+        panel(
+          "Change it once you're in",
+          `This password was generated for you and sent by email, so treat it as temporary. Set your own from Business Profile as soon as you sign in.`,
+          "warn",
+        ),
+    }),
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+  } catch (error) {
+    console.error("Vendor invite email failed:", error.message);
+    throw error;
+  }
+};
+
+/**
+ * Sent when a vendor adds a manager to their team.
+ *
+ * Same reasoning as the vendor invite: the password used to be the literal
+ * "manager123" in the vendor dashboard, and therefore in the public bundle.
+ */
+const sendManagerInviteEmail = async (
+  to,
+  { fullname, businessName, tempPassword },
+) => {
+  const mailOptions = {
+    from: '"ChowSpace" <no-reply@chowspace.ng>',
+    to,
+    subject: `You've been added to ${businessName} on Chowspace`,
+    text:
+      `${fullname}, you can now manage ${businessName} on Chowspace.
+
+` +
+      `Email: ${to}
+Temporary password: ${tempPassword}
+
+` +
+      `Sign in at ${SITE}/Login and change it from your profile.`,
+    html: emailShell({
+      heading: `You can now manage ${businessName}`,
+      intro: `Hi ${fullname}, you've been added as a manager for <strong style="color:${INK};">${businessName}</strong>. Sign in with the details below.`,
+      ctaLabel: "Sign in",
+      ctaHref: `${SITE}/Login`,
+      body:
+        panel(
+          "Your sign-in details",
+          `<p style="margin:0 0 6px;font-size:13px;line-height:1.6;color:#374151;">Email<br><strong style="color:${INK};font-size:14px;">${to}</strong></p>
+           <p style="margin:10px 0 0;font-size:13px;line-height:1.6;color:#374151;">Temporary password<br><strong style="color:${INK};font-size:16px;letter-spacing:1px;font-family:ui-monospace,Menlo,monospace;">${tempPassword}</strong></p>`,
+        ) +
+        panel(
+          "Change it once you're in",
+          `This password was generated for you and sent by email, so treat it as temporary. Set your own from your profile as soon as you sign in.`,
+          "warn",
+        ),
+    }),
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+  } catch (error) {
+    console.error("Manager invite email failed:", error.message);
+    throw error;
+  }
+};
+
 module.exports = {
   sendSignupEmail,
+  sendVendorInviteEmail,
+  sendManagerInviteEmail,
   orderConfirmationEmail,
   sendVendorVerificationEmail,
   sendVerificationDecisionEmail,

@@ -1,7 +1,9 @@
 const bcrypt = require("bcrypt");
+const crypto = require("crypto");
 const User = require("../models/user");
 const Manager = require("../models/manager");
 const Vendor = require("../models/vendor");
+const { enqueueEmail } = require("../queues/email");
 
 async function createManager(req, res) {
   try {
@@ -19,8 +21,15 @@ async function createManager(req, res) {
       return res.status(400).json({ message: "User already exists" });
     }
 
+    // The vendor dashboard used to send the literal "manager123", which shipped
+    // in the public JS bundle — so every manager account on the platform had
+    // the same publicly known password. Generated here instead and emailed to
+    // the manager; nothing on the client ever chooses it.
+    const tempPassword =
+      password || crypto.randomBytes(9).toString("base64url");
+
     const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    const hashedPassword = await bcrypt.hash(tempPassword, salt);
 
     const user = await User.create({
       fullname,
@@ -39,6 +48,18 @@ async function createManager(req, res) {
 
     await newManager.save();
     await newManager.populate("vendor");
+
+    // Queued, and it falls back to sending inline if the queue is down — the
+    // manager cannot sign in without this.
+    await enqueueEmail({
+      template: "manager-invite",
+      to: email,
+      data: {
+        fullname,
+        businessName: vendor.businessName,
+        tempPassword,
+      },
+    });
 
     res.status(201).json({
       success: true,

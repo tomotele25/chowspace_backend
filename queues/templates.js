@@ -1,5 +1,7 @@
 const {
   sendSignupEmail,
+  sendVendorInviteEmail,
+  sendManagerInviteEmail,
   orderConfirmationEmail,
   sendVendorVerificationEmail,
   sendVerificationDecisionEmail,
@@ -26,6 +28,8 @@ const TEMPLATES = {
       data.subject || "Your Chowspace Order Has Been Confirmed 🎉",
     ),
   "vendor-verification": (to, data) => sendVendorVerificationEmail(to, data),
+  "vendor-invite": (to, data) => sendVendorInviteEmail(to, data),
+  "manager-invite": (to, data) => sendManagerInviteEmail(to, data),
   "verification-decision": (to, data) =>
     sendVerificationDecisionEmail(to, data),
 };
