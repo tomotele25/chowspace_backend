@@ -325,13 +325,24 @@ const moneiWebhook = async (req, res) => {
   try {
     const signature =
       req.headers["x-monei-signature"] || req.headers["monei-signature"];
-    const webhookSecret = process.env.MONEI_WEBHOOK_SECRET;
+    // Monei's dashboard does not always issue a separate per-webhook secret,
+    // and their docs don't say which credential signs the payload. Both
+    // candidates are tried.
+    //
+    // This weakens nothing: an HMAC only verifies against the key that
+    // produced it, so offering two keys cannot help anyone forge a signature
+    // — it just means we recognise whichever one Monei used. Set
+    // MONEI_WEBHOOK_SECRET once known and it takes precedence.
+    const secrets = [
+      process.env.MONEI_WEBHOOK_SECRET,
+      process.env.MONEI_SECRET_KEY,
+    ].filter(Boolean);
 
-    if (!signature || !webhookSecret) {
+    if (!signature || secrets.length === 0) {
       console.error(
         "Monei webhook rejected:",
-        !webhookSecret
-          ? "MONEI_WEBHOOK_SECRET is not set — no payment can be confirmed by webhook"
+        secrets.length === 0
+          ? "no signing credential configured — no payment can be confirmed by webhook"
           : "no x-monei-signature header",
       );
       return res.status(401).json({ received: false });
@@ -352,21 +363,36 @@ const moneiWebhook = async (req, res) => {
     }
 
     const sigBuf = Buffer.from(String(signature), "utf8");
-    const matches = candidates.some((body) => {
-      const expBuf = Buffer.from(
-        crypto.createHmac("sha256", webhookSecret).update(body).digest("hex"),
-        "utf8",
-      );
-      return (
-        sigBuf.length === expBuf.length &&
-        crypto.timingSafeEqual(sigBuf, expBuf)
-      );
-    });
+    let matchedWith = null;
 
-    if (!matches) {
+    for (const secret of secrets) {
+      for (const body of candidates) {
+        const expBuf = Buffer.from(
+          crypto.createHmac("sha256", secret).update(body).digest("hex"),
+          "utf8",
+        );
+        if (
+          sigBuf.length === expBuf.length &&
+          crypto.timingSafeEqual(sigBuf, expBuf)
+        ) {
+          matchedWith =
+            secret === process.env.MONEI_WEBHOOK_SECRET
+              ? "MONEI_WEBHOOK_SECRET"
+              : "MONEI_SECRET_KEY";
+          break;
+        }
+      }
+      if (matchedWith) break;
+    }
+
+    if (!matchedWith) {
       console.error("Monei webhook: invalid signature");
       return res.status(401).json({ received: false });
     }
+
+    // Logged so the first real delivery tells us which credential Monei signs
+    // with — the thing their documentation leaves out.
+    console.log(`[monei] webhook verified using ${matchedWith}`);
 
     const event = JSON.parse(raw);
 
