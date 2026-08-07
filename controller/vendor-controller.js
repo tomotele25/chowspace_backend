@@ -105,14 +105,18 @@ const createVendor = async (req, res) => {
     if (existingUser) {
       return res
         .status(400)
-        .json({ success: false, message: "An account with this email already exists" });
+        .json({
+          success: false,
+          message: "An account with this email already exists",
+        });
     }
 
-    const methods = Array.isArray(paymentMethods) && paymentMethods.length
-      ? paymentMethods.filter((m) =>
-          ["whatsapp", "paystack", "monei"].includes(m),
-        )
-      : ["whatsapp"];
+    const methods =
+      Array.isArray(paymentMethods) && paymentMethods.length
+        ? paymentMethods.filter((m) =>
+            ["whatsapp", "paystack", "monei"].includes(m),
+          )
+        : ["whatsapp"];
 
     if (methods.length === 0) {
       return res.status(400).json({
@@ -127,7 +131,10 @@ const createVendor = async (req, res) => {
     // Raw token goes in the email; only its hash is stored, so a database leak
     // doesn't hand out working confirmation links.
     const rawToken = crypto.randomBytes(32).toString("hex");
-    const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+    const tokenHash = crypto
+      .createHash("sha256")
+      .update(rawToken)
+      .digest("hex");
 
     const newUser = await User.create({
       fullname,
@@ -215,7 +222,8 @@ const createVendor = async (req, res) => {
 // — and the cron may not run at all on Vercel's Hobby tier, which caps crons
 // at one a day. getEffectiveStatus is pure and does no I/O, so computing it
 // per request is free and makes opening at 9am exact.
-const STATUS_FIELDS = "status openingHours timezone useAutoHours statusOverride";
+const STATUS_FIELDS =
+  "status openingHours timezone useAutoHours statusOverride";
 
 // Needed by isPubliclyVisible alongside a product count.
 const VISIBILITY_FIELDS = "verificationStatus logo";
@@ -260,23 +268,23 @@ const getAllVendor = async (req, res) => {
       .filter((v) => isPubliclyVisible(v, counts.get(String(v._id)) || 0))
       .map((v) => withLiveStatus(v, now));
 
-    if (vendors.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "No vendors found",
-      });
-    }
+    // An empty list is a valid answer, not an error. Returning 404 made "no
+    // vendors are visible right now" indistinguishable from "the API is
+    // broken", so the homepage showed a failure state either way — and after
+    // the visibility gate landed, that is exactly what every vendor without
+    // seven products and a logo would have caused.
     return res.status(200).json({
       success: true,
-      message: "Vendors successfully found",
+      message: vendors.length
+        ? "Vendors successfully found"
+        : "No vendors are visible right now",
       vendors,
     });
   } catch (error) {
     console.error("Error fetching vendors:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Server error",
-      error: error.message,
+      message: "Could not load vendors",
     });
   }
 };

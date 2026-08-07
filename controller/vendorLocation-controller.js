@@ -15,13 +15,13 @@ const createVendorLocation = async (req, res) => {
 
     let vendorId;
 
- if (user.role === "vendor") {
-   vendorId = user.vendorId; 
- } else if (user.role === "manager" && user.vendorId) {
-   vendorId = user.vendorId;
- } else {
-   return res.status(404).json({ message: "Vendor or manager not found." });
- }
+    if (user.role === "vendor") {
+      vendorId = user.vendorId;
+    } else if (user.role === "manager" && user.vendorId) {
+      vendorId = user.vendorId;
+    } else {
+      return res.status(404).json({ message: "Vendor or manager not found." });
+    }
 
     // Check if location already exists for this vendor
     const existing = await VendorLocation.findOne({
@@ -81,9 +81,18 @@ const getVendorPackingFee = async (req, res) => {
 const deleteVendorLocation = async (req, res) => {
   try {
     const { id } = req.params;
-    await VendorLocation.findByIdAndDelete(id);
+    // Scoped to the caller's own store. A bare findByIdAndDelete on an open
+    // route let anyone remove any vendor's delivery zone.
+    const deleted = await VendorLocation.findOneAndDelete({
+      _id: id,
+      vendorId: req.vendorId,
+    });
+    if (!deleted) {
+      return res.status(404).json({ error: "Location not found." });
+    }
     res.status(200).json({ message: "Location deleted successfully." });
   } catch (err) {
+    console.error("deleteVendorLocation error:", err.message);
     res.status(500).json({ error: "Failed to delete location." });
   }
 };
@@ -137,16 +146,14 @@ const updateVendorLocations = async (req, res) => {
         .json({ message: "Locations must be an array of {location, price}" });
     }
 
-    const manager = await Manager.findOne({ user: managerId });
-    if (!manager) {
-      return res.status(404).json({ message: "Manager not found" });
-    }
-
-    const vendorId = manager.vendor;
+    // The store comes from the token, not from the :managerId in the URL.
+    // Resolving it from the param on an unauthenticated route meant anyone
+    // could rewrite any vendor's delivery prices — including down to zero.
+    const vendorId = req.vendorId;
     if (!vendorId) {
       return res
-        .status(404)
-        .json({ message: "Vendor not mapped to this manager" });
+        .status(403)
+        .json({ message: "No store is linked to this account" });
     }
 
     const updates = await Promise.all(
@@ -231,7 +238,6 @@ const getPlatformLocations = async (req, res) => {
   }
 };
 
-
 const createLocationByVendor = async (req, res) => {
   try {
     const { location, price } = req.body;
@@ -249,11 +255,9 @@ const createLocationByVendor = async (req, res) => {
     } else if (user.role === "manager" && user.vendorId) {
       vendorId = user.vendorId;
     } else {
-      return res
-        .status(403)
-        .json({
-          message: "Only vendors or their managers can create locations.",
-        });
+      return res.status(403).json({
+        message: "Only vendors or their managers can create locations.",
+      });
     }
 
     const existing = await VendorLocation.findOne({
@@ -279,7 +283,6 @@ const createLocationByVendor = async (req, res) => {
     res.status(500).json({ message: "Server error." });
   }
 };
- 
 
 module.exports = {
   deleteVendorLocation,
@@ -290,5 +293,5 @@ module.exports = {
   syncVendorLocationsToPlatform,
   getPlatformLocations,
   createLocationByVendor,
- getVendorPackingFee
+  getVendorPackingFee,
 };

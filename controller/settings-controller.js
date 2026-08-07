@@ -13,30 +13,25 @@ const WEEKDAYS = [
 
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/; // "HH:mm", 24-hour
 
-
 /* ══════════════════════════════════════════
    Store hours
    ══════════════════════════════════════════ */
 
 // PUT /api/vendor/update-hours
 // Body: { openingHours: [{ day, open, close, closed }, ...] }
-// Vendor identity comes from protectVendor middleware, not the URL —
-// matches your existing frontend call. Checks the common attachment
-// patterns since I haven't seen protectVendor's implementation.
+// Vendor identity comes from the token, never the URL or body.
 const updateStoreHours = async (req, res) => {
   try {
-    const targetId =
-      req.vendorId ||
-      req.vendor?._id ||
-      req.user?.vendorId ||
-      req.body.vendorId ||
-      req.params.vendorId;
+    // The old chain ended in `req.body.vendorId || req.params.vendorId`. The
+    // guard in front of it never rejected customers, and a customer's token
+    // resolved no vendor — so the fallback took over and let the caller name
+    // whichever store they wanted to rewrite the hours of.
+    const targetId = req.vendorId;
 
     if (!targetId) {
-      return res.status(401).json({
+      return res.status(403).json({
         success: false,
-        message:
-          "Could not identify vendor from request. Check how protectVendor attaches vendor identity to req.",
+        message: "No store is linked to this account",
       });
     }
 
@@ -130,7 +125,9 @@ const getLiveStoreStatus = async (req, res) => {
       // platform default, so the UI can say so instead of implying they saved it.
       usingDefaultHours: !vendor.openingHours?.length,
       // Set while a manual open/close from the dashboard is still in force.
-      overrideUntil: activeOverride(vendor) ? vendor.statusOverride.expiresAt : null,
+      overrideUntil: activeOverride(vendor)
+        ? vendor.statusOverride.expiresAt
+        : null,
     });
   } catch (err) {
     res.status(500).json({

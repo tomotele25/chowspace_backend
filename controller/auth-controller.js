@@ -183,15 +183,21 @@ const resendVerification = async (req, res) => {
   };
 
   try {
-    const email = String(req.body?.email || "").trim().toLowerCase();
+    const email = String(req.body?.email || "")
+      .trim()
+      .toLowerCase();
     if (!email) {
-      return res.status(400).json({ success: false, message: "Email is required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Email is required" });
     }
 
     const user = await User.findOne({ email, role: "vendor" });
     if (!user || user.emailVerified) return res.status(200).json(generic);
 
-    const vendor = await Vendor.findOne({ user: user._id }).select("businessName");
+    const vendor = await Vendor.findOne({ user: user._id }).select(
+      "businessName",
+    );
 
     const rawToken = crypto.randomBytes(32).toString("hex");
     user.emailVerifyToken = hashToken(rawToken);
@@ -211,7 +217,10 @@ const resendVerification = async (req, res) => {
     console.error("resendVerification error:", err);
     return res
       .status(500)
-      .json({ success: false, message: "Could not send the email. Try again shortly." });
+      .json({
+        success: false,
+        message: "Could not send the email. Try again shortly.",
+      });
   }
 };
 

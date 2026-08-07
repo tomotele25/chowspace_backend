@@ -147,7 +147,6 @@ const updateProduct = async (req, res) => {
   }
 };
 
-
 const getVendorProducts = async (req, res) => {
   try {
     const user = req.user;
@@ -195,19 +194,26 @@ const reorderProducts = async (req, res) => {
         .json({ success: false, message: "Product list is empty or missing" });
     }
 
+    // `vendor` in the filter is what keeps this to the caller's own menu.
+    // Without it, one authenticated request could reposition every product on
+    // the platform in a single bulkWrite.
     const bulkOps = products.map((p) => ({
       updateOne: {
-        filter: { _id: p.id },
+        filter: { _id: p.id, vendor: req.vendorId },
         update: { position: p.position },
       },
     }));
 
-    await Product.bulkWrite(bulkOps);
+    const result = await Product.bulkWrite(bulkOps);
 
-    res.json({ success: true, message: "Products reordered successfully" });
+    res.json({
+      success: true,
+      message: "Products reordered successfully",
+      updated: result.modifiedCount,
+    });
   } catch (err) {
-    console.error("Error reordering products:", err);
-    res.status(500).json({ success: false, error: err.message });
+    console.error("Error reordering products:", err.message);
+    res.status(500).json({ success: false, message: "Could not reorder" });
   }
 };
 
@@ -219,12 +225,20 @@ const updateAvailability = async (req, res) => {
     const product = await Product.findById(id);
     if (!product) return res.status(404).json({ message: "Product not found" });
 
+    // Same ownership check `updateProduct` already makes. Without it any
+    // signed-in account could take another vendor's menu offline item by item.
+    if (String(product.vendor) !== String(req.vendorId)) {
+      return res
+        .status(403)
+        .json({ success: false, message: "That product isn't yours" });
+    }
+
     product.available = !product.available;
     await product.save();
 
     res.status(200).json({ success: true, product });
   } catch (err) {
-    console.error("Error updating product:", err);
+    console.error("Error updating product:", err.message);
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -281,7 +295,12 @@ const getProductsByVendorSlug = async (req, res) => {
 const deleteProductById = async (req, res) => {
   try {
     const { id } = req.params;
-    const product = await Product.findByIdAndDelete(id);
+    // Scoped to the caller's store. This route had no authentication at all,
+    // so any object id deleted any vendor's product.
+    const product = await Product.findOneAndDelete({
+      _id: id,
+      vendor: req.vendorId,
+    });
     if (!product) {
       return res
         .status(404)
@@ -292,7 +311,7 @@ const deleteProductById = async (req, res) => {
       .status(200)
       .json({ success: true, message: "Product deleted successfully" });
   } catch (error) {
-    console.log("Error deleting product:", error);
+    console.error("Error deleting product:", error.message);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };

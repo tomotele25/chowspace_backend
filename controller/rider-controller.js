@@ -78,7 +78,7 @@ const updateRider = async (req, res) => {
     const rider = await Rider.findByIdAndUpdate(
       req.params.id,
       { $set: req.body },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     );
 
     if (!rider) {

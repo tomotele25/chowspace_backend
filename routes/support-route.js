@@ -9,24 +9,30 @@ const {
   getAllTickets,
 } = require("../controller/support-controller");
 
-const customerAuth = require("../middleware/customerSupportAuth");
-const adminAuth = require("../middleware/adminAuth");
+const { requireRole } = require("../middleware/requireRole");
+
+const customerOnly = requireRole("customer");
+const adminOnly = requireRole("admin");
 
 // Create ticket - customer only
-router.post("/support/ticket/create", customerAuth, createTicket);
+router.post("/support/ticket/create", customerOnly, createTicket);
 
 // Customer reply
 router.post(
   "/ticket/:ticketId/reply/customer",
-  customerAuth,
-  customerReplyToTicket
+  customerOnly,
+  customerReplyToTicket,
 );
 
 // Admin reply
-router.post("/ticket/:ticketsId/reply", adminAuth, replyToTicket);
-router.get("/support/tickets", adminAuth, getAllTickets);
-// Get messages for ticket - customer only
-router.get("/ticket/:ticketId/messages", customerAuth, getMessagesForTicket);
-router.get("/admin/ticket/:ticketId/messages", adminAuth, getMessagesForTicket);
+router.post("/ticket/:ticketsId/reply", adminOnly, replyToTicket);
+router.get("/support/tickets", adminOnly, getAllTickets);
+
+// Customer thread. The controller checks the ticket belongs to the caller —
+// without that, any customer could read any other customer's support
+// conversation by changing the id.
+router.get("/ticket/:ticketId/messages", customerOnly, getMessagesForTicket);
+
+router.get("/admin/ticket/:ticketId/messages", adminOnly, getMessagesForTicket);
 
 module.exports = router;

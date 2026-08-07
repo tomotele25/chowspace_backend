@@ -433,11 +433,11 @@ const priceConfirmation = async (req, res) => {
 };
 
 const getAllOrders = async (req, res) => {
-  const { vendorId } = req.query;
-
+  // Scoped to the token, never the query string. `?vendorId=` used to be the
+  // only filter, and omitting it returned every order the platform has ever
+  // taken — names, phones and delivery addresses included.
   try {
-    const query = vendorId ? { vendorId } : {};
-    const orders = await Order.find(query)
+    const orders = await Order.find({ vendorId: req.vendorId })
       .sort({ createdAt: -1 })
       .populate("customerId", "fullname email");
 
@@ -447,7 +447,7 @@ const getAllOrders = async (req, res) => {
       message: "Orders fetched successfully",
     });
   } catch (err) {
-    console.error("Fetching orders failed:", err);
+    console.error("Fetching orders failed:", err.message);
     res.status(500).json({ message: "Failed to fetch orders." });
   }
 };
@@ -459,9 +459,15 @@ const getOrderById = async (req, res) => {
     const order = await Order.findById(orderId);
     if (!order) return res.status(404).json({ message: "Order not found." });
 
+    // Belonging to a store is what earns you the customer's address, not
+    // knowing the id.
+    if (String(order.vendorId) !== String(req.vendorId)) {
+      return res.status(403).json({ message: "That order isn't yours." });
+    }
+
     res.json(order);
   } catch (err) {
-    console.error("Fetching order failed:", err);
+    console.error("Fetching order failed:", err.message);
     res.status(500).json({ message: "Failed to fetch order." });
   }
 };
@@ -474,13 +480,26 @@ const updateOrderStatus = async (req, res) => {
     const order = await Order.findById(orderId);
     if (!order) return res.status(404).json({ message: "Order not found." });
 
+    if (String(order.vendorId) !== String(req.vendorId)) {
+      return res.status(403).json({ message: "That order isn't yours." });
+    }
+
     if (status) order.status = status;
-    if (paymentStatus) order.paymentStatus = paymentStatus;
+
+    // paymentStatus is deliberately not settable here. This route was open,
+    // so anyone could mark any order paid; even guarded, "paid" should only
+    // ever be written by the payment provider's webhook or verify call.
+    if (paymentStatus) {
+      return res.status(400).json({
+        message:
+          "Payment status is set by the payment provider, not by this route.",
+      });
+    }
 
     await order.save();
     res.json(order);
   } catch (err) {
-    console.error("Updating order failed:", err);
+    console.error("Updating order failed:", err.message);
     res.status(500).json({ message: "Failed to update order." });
   }
 };

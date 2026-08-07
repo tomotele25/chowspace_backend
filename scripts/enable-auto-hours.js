@@ -48,7 +48,9 @@ const run = async () => {
   );
 
   const vendors = await Vendor.find()
-    .select("businessName status useAutoHours openingHours timezone statusOverride")
+    .select(
+      "businessName status useAutoHours openingHours timezone statusOverride",
+    )
     .lean();
 
   const noHours = vendors.filter((v) => !v.openingHours?.length);
@@ -56,7 +58,9 @@ const run = async () => {
   const toEnable = vendors.filter((v) => !v.useAutoHours);
 
   console.log(`Vendors                       : ${vendors.length}`);
-  console.log(`  no hours set (get ${DEFAULT_OPEN}–${DEFAULT_CLOSE}) : ${noHours.length}`);
+  console.log(
+    `  no hours set (get ${DEFAULT_OPEN}–${DEFAULT_CLOSE}) : ${noHours.length}`,
+  );
   console.log(`  hours already set           : ${withHours.length}`);
   console.log(`  need useAutoHours turned on : ${toEnable.length}`);
 
@@ -65,12 +69,16 @@ const run = async () => {
   const flipping = vendors
     .map((v) => {
       const after = getEffectiveStatus({ ...v, useAutoHours: true }, now);
-      return v.status !== after ? { name: v.businessName, from: v.status, to: after } : null;
+      return v.status !== after
+        ? { name: v.businessName, from: v.status, to: after }
+        : null;
     })
     .filter(Boolean);
 
   if (flipping.length) {
-    console.log(`\nStatus changes taking effect right now (${flipping.length}):`);
+    console.log(
+      `\nStatus changes taking effect right now (${flipping.length}):`,
+    );
     flipping.forEach((f) =>
       console.log(`  ${f.from.padEnd(6)} -> ${f.to.padEnd(6)}  ${f.name}`),
     );
@@ -93,7 +101,9 @@ const run = async () => {
       `\nWill close at ${HARD_CLOSE_HOUR}:00 despite later configured hours (${truncated.length}) —`,
     );
     console.log("worth telling these vendors:");
-    truncated.forEach((t) => console.log(`  closes ${t.latest} -> 22:00   ${t.name}`));
+    truncated.forEach((t) =>
+      console.log(`  closes ${t.latest} -> 22:00   ${t.name}`),
+    );
   }
 
   if (!APPLY) {
@@ -114,7 +124,9 @@ const run = async () => {
   );
   console.log(`\nEnabled auto-hours on ${result.modifiedCount} vendors.`);
 
-  const remaining = await Vendor.countDocuments({ useAutoHours: { $ne: true } });
+  const remaining = await Vendor.countDocuments({
+    useAutoHours: { $ne: true },
+  });
   console.log(
     remaining === 0
       ? "Every vendor is now on auto-hours."

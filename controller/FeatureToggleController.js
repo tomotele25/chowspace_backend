@@ -27,7 +27,10 @@ const getInAppChatStatus = async (req, res) => {
 
 const updateInAppChat = async (req, res) => {
   try {
-    const { vendorId } = req.params;
+    // Resolved from the token, not the URL. The param named the vendor
+    // outright, so any signed-in account could switch another store's chat
+    // preference and change where its customers were sent.
+    const vendorId = req.vendorId;
     const { inAppChat } = req.body;
 
     if (typeof inAppChat !== "boolean") {

@@ -32,10 +32,14 @@ const createAnnouncement = async (req, res) => {
 
 const getAnnouncement = async (req, res) => {
   try {
-    const { role } = req.params;
+    // Derived from the token, not the URL. The param used to decide which
+    // audience you saw, so any account could read another audience's feed by
+    // changing one word in the address bar. Audiences are stored plural
+    // ("vendors"); roles are singular ("vendor").
+    const audience = `${req.user.role}s`;
     const userId = req.user?.id;
     const announcements = await Announcement.find({
-      audience: new RegExp(`^${role}$`, "i"),
+      audience: new RegExp(`^${audience}$`, "i"),
     }).select("header message audience createdAt readBy");
 
     const formattedAnnouncements = announcements.map((a) => {

@@ -54,13 +54,17 @@ const run = async () => {
   const graded = vendors.map((v) => {
     const productCount = counts.get(String(v._id)) || 0;
     const missing = [];
-    if (productCount < MIN_PRODUCTS) missing.push(`${productCount}/${MIN_PRODUCTS} products`);
+    if (productCount < MIN_PRODUCTS)
+      missing.push(`${productCount}/${MIN_PRODUCTS} products`);
     if (!v.logo) missing.push("no logo");
     return {
       ...v,
       productCount,
       missing,
-      live: isPubliclyVisible({ ...v, verificationStatus: "approved" }, productCount),
+      live: isPubliclyVisible(
+        { ...v, verificationStatus: "approved" },
+        productCount,
+      ),
     };
   });
 
@@ -106,7 +110,9 @@ const run = async () => {
     { _id: { $in: vendors.map((v) => v.user) }, emailVerified: { $ne: true } },
     { $set: { emailVerified: true } },
   );
-  console.log(`Marked ${userResult.modifiedCount} vendor logins as email-confirmed.`);
+  console.log(
+    `Marked ${userResult.modifiedCount} vendor logins as email-confirmed.`,
+  );
 
   const stillPending = await Vendor.countDocuments({
     verificationStatus: { $ne: "approved" },

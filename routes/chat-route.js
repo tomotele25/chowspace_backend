@@ -1,18 +1,65 @@
 const express = require("express");
 const router = express.Router();
-const Message = require("../models/message"); // ← ADD THIS
+const Message = require("../models/message");
 const { getMessages, getVendorChatRooms } = require("../controller/chat");
 const upload = require("../middleware/upload");
+const {
+  requireRole,
+  attachUserIfPresent,
+} = require("../middleware/requireRole");
 
+/**
+ * Chat can't require a login on the customer side: most customers order as
+ * guests and have no account. So the token is optional, and what it changes is
+ * what a message is allowed to claim about itself.
+ */
 
-router.get("/chat/vendor/:vendorId", getVendorChatRooms);
+const Order = require("../models/order");
 
+/**
+ * Which vendor a room belongs to.
+ *
+ * Rooms are named `vendor_<vendorId>` or `order_<orderId>`
+ * (see api/server.js), so the vendor is either in the name or one lookup away.
+ */
+async function vendorForRoom(roomId) {
+  if (!roomId) return null;
 
-router.post("/chat/:roomId/message", async (req, res) => {
+  if (roomId.startsWith("vendor_")) {
+    return roomId.slice("vendor_".length) || null;
+  }
+
+  if (roomId.startsWith("order_")) {
+    const order = await Order.findOne({
+      orderId: roomId.slice("order_".length),
+    }).select("vendorId");
+    return order?.vendorId ? String(order.vendorId) : null;
+  }
+
+  return null;
+}
+
+/** True when the caller is staff of the store that owns this room. */
+async function speaksForVendor(req, roomId) {
+  if (!req.user) return false;
+  if (req.user.role !== "vendor" && req.user.role !== "manager") return false;
+  if (!req.vendorId) return false;
+
+  const roomVendor = await vendorForRoom(roomId);
+  return Boolean(roomVendor) && String(roomVendor) === String(req.vendorId);
+}
+
+// A vendor's list of conversations — staff only, and only their own.
+router.get(
+  "/chat/vendor/:vendorId",
+  requireRole("vendor", "manager"),
+  getVendorChatRooms,
+);
+
+router.post("/chat/:roomId/message", attachUserIfPresent, async (req, res) => {
   try {
     const { roomId } = req.params;
-    const { text, sender, senderType, vendorId, orderId, fileUrl, fileName } =
-      req.body;
+    const { text, sender, vendorId, orderId, fileUrl, fileName } = req.body;
 
     if (!roomId || !sender || (!text && !fileUrl)) {
       return res
@@ -20,11 +67,21 @@ router.post("/chat/:roomId/message", async (req, res) => {
         .json({ error: "roomId, sender, and text or fileUrl are required." });
     }
 
+    // senderType used to be taken from the body. Combined with the route
+    // being open, that let anyone post a message that rendered as if the
+    // vendor had sent it — which is how a forged payment request carrying
+    // someone else's account number could reach a customer. It is now
+    // derived from the token, so speaking as the vendor requires being that
+    // vendor, in that vendor's room.
+    const senderType = (await speaksForVendor(req, roomId))
+      ? "vendor"
+      : "customer";
+
     const message = await Message.create({
       roomId,
       text: text || "",
       sender,
-      senderType: senderType || "customer",
+      senderType,
       vendorId: vendorId || null,
       orderId: orderId || null,
       fileUrl: fileUrl || null,
@@ -33,13 +90,15 @@ router.post("/chat/:roomId/message", async (req, res) => {
 
     return res.status(201).json({ success: true, message });
   } catch (err) {
-    console.error("POST /api/chat/:roomId/message error:", err);
+    console.error("POST /api/chat/:roomId/message error:", err.message);
     return res.status(500).json({ error: "Failed to save message." });
   }
 });
 
-
-router.get("/chat/:roomId", getMessages);
+// Reading a thread. `vendor_<id>` rooms are the vendor's inbox and are staff
+// only; `order_<id>` rooms belong to a single order and stay reachable by the
+// guest who placed it, for whom the order id is the only credential there is.
+router.get("/chat/:roomId", attachUserIfPresent, getMessages);
 
 router.post("/upload", upload.single("file"), (req, res) => {
   try {
@@ -48,11 +107,11 @@ router.post("/upload", upload.single("file"), (req, res) => {
     }
 
     return res.status(200).json({
-      url: req.file.path, 
+      url: req.file.path,
       filename: req.file.originalname,
     });
   } catch (err) {
-    console.error("POST /api/upload error:", err);
+    console.error("POST /api/upload error:", err.message);
     return res.status(500).json({ error: "Upload failed." });
   }
 });

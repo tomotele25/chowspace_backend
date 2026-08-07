@@ -83,18 +83,24 @@ const getOrderHistoryByCustomer = async (req, res) => {
       .status(400)
       .json({ success: false, message: "Customer ID required" });
   }
+  // The id in the URL proves nothing — before this check, changing it in the
+  // address bar returned somebody else's order history, addresses included.
+  if (String(customerId) !== String(req.user._id)) {
+    return res
+      .status(403)
+      .json({ success: false, message: "You can only view your own orders" });
+  }
+
   try {
     const orders = await Order.find({ customerId }).sort({ createdAt: -1 });
-    if (!orders || orders.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "No orders found for this customer" });
-    }
-    return res.status(200).json({ success: true, orders });
+    // An empty history is not an error. Returning 404 made "no orders yet"
+    // and "the request failed" look identical to the page.
+    return res.status(200).json({ success: true, orders: orders || [] });
   } catch (error) {
+    console.error("getOrderHistoryByCustomer error:", error.message);
     return res
       .status(500)
-      .json({ success: false, message: "Server error", error: error.message });
+      .json({ success: false, message: "Could not load your orders" });
   }
 };
 

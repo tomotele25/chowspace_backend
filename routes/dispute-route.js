@@ -5,11 +5,20 @@ const {
   getVendorDisputes,
   getDisputeReasons,
 } = require("../controller/dispute-controller");
+const { requireRole } = require("../middleware/requireRole");
 
-const protect = require("../middleware/isVendor");
+// Was open — anyone could file a dispute against any order id.
+router.post("/create-dispute", requireRole("customer"), createOrderDispute);
 
-router.post("/create-dispute", createOrderDispute);
-router.get("/get-disputes", protect, getVendorDisputes);
+// Was guarded by `isVendor`, which never checked the role: a customer token
+// left `vendorId` undefined and the query matched orders with no vendor field
+// rather than returning 403.
+router.get(
+  "/get-disputes",
+  requireRole("vendor", "manager"),
+  getVendorDisputes,
+);
+
 router.get("/dispute/reasons", getDisputeReasons);
 
 module.exports = router;

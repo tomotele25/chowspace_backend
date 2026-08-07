@@ -108,7 +108,9 @@ const uploadVerificationDocuments = async (req, res) => {
     }
 
     const files = req.files || [];
-    const accepted = files.filter((f) => REQUIRED_DOCUMENTS.includes(f.fieldname));
+    const accepted = files.filter((f) =>
+      REQUIRED_DOCUMENTS.includes(f.fieldname),
+    );
 
     if (accepted.length === 0) {
       return res.status(400).json({
@@ -128,7 +130,11 @@ const uploadVerificationDocuments = async (req, res) => {
       (d) => !accepted.some((f) => f.fieldname === d.kind),
     );
     accepted.forEach((f) =>
-      documents.push({ kind: f.fieldname, url: f.path, uploadedAt: new Date() }),
+      documents.push({
+        kind: f.fieldname,
+        url: f.path,
+        uploadedAt: new Date(),
+      }),
     );
 
     vendor.verificationDocuments = documents;
@@ -137,7 +143,9 @@ const uploadVerificationDocuments = async (req, res) => {
       documents.some((d) => d.kind === kind),
     );
     // A re-upload after rejection puts them back in the queue.
-    vendor.verificationStatus = complete ? "under_review" : "awaiting_documents";
+    vendor.verificationStatus = complete
+      ? "under_review"
+      : "awaiting_documents";
     if (complete) vendor.reviewNote = undefined;
 
     await vendor.save({ validateModifiedOnly: true });
@@ -231,7 +239,8 @@ const decideVerification = async (req, res) => {
     }
 
     vendor.verificationStatus = decision;
-    vendor.reviewNote = decision === "rejected" ? String(reviewNote).trim() : undefined;
+    vendor.reviewNote =
+      decision === "rejected" ? String(reviewNote).trim() : undefined;
     vendor.reviewedAt = new Date();
     vendor.reviewedBy = req.user?._id;
     await vendor.save({ validateModifiedOnly: true });

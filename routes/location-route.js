@@ -13,23 +13,43 @@ const {
   getPlatformLocations,
   createLocationByVendor,
   syncVendorLocationsToPlatform,
-  getVendorPackingFee
+  getVendorPackingFee,
 } = require("../controller/vendorLocation-controller");
-const auth = require("../middleware/auth");
-const vendorAuthMiddleware = require("../middleware/vendor");
-router.post("/createVendorLocation", auth, createVendorLocation);
+const { requireRole } = require("../middleware/requireRole");
+
+const storeStaff = requireRole("vendor", "manager");
+
+/* Vendor delivery zones — the prices customers are charged, so writes are
+   staff-only and scoped to the caller's own store. Deleting a zone and
+   updating the price list were both open to anonymous callers, which meant
+   anyone could set any vendor's delivery fee to zero. */
+router.post("/createVendorLocation", storeStaff, createVendorLocation);
+router.post("/locations", storeStaff, createLocationByVendor);
+router.delete("/locations/:id", storeStaff, deleteVendorLocation);
+router.put("/locations/:managerId", storeStaff, updateVendorLocations);
+
+/* Public reads — the storefront needs these to quote delivery before anyone
+   has logged in. */
 router.get("/locations/:vendorId", getVendorLocations);
-router.delete("/locations/:id", deleteVendorLocation);
-router.post("/createLocation", createLocation);
 router.get("/getLocations", getLocation);
-router.get("/locations/manager/:managerId", getVendorLocationsByManager);
-router.put("/locations/:managerId", updateVendorLocations);
-router.get("/sync-locations", syncVendorLocationsToPlatform);
 router.get("/platform-locations", getPlatformLocations);
-router.post("/locations", vendorAuthMiddleware, createLocationByVendor);
-
-
-
 router.get("/packing-fee/:vendorId", getVendorPackingFee);
+
+router.get(
+  "/locations/manager/:managerId",
+  storeStaff,
+  getVendorLocationsByManager,
+);
+
+/* Platform-wide location list — admin only. */
+router.post("/createLocation", requireRole("admin"), createLocation);
+
+/* A GET that writes: it creates PlatformLocation rows. Admin-only until it
+   becomes a POST, which is a separate change. */
+router.get(
+  "/sync-locations",
+  requireRole("admin"),
+  syncVendorLocationsToPlatform,
+);
 
 module.exports = router;

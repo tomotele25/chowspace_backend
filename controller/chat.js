@@ -17,6 +17,20 @@ const getMessages = async (req, res) => {
       return res.status(400).json({ error: "roomId is required." });
     }
 
+    // `vendor_<id>` is the vendor's whole inbox — every customer they have
+    // ever talked to. Vendor ids are public (the storefront listing returns
+    // them), so without this the entire inbox was one guessable URL away.
+    // Order rooms stay open: the guest who placed the order has no account,
+    // and the order id is the only credential they have.
+    if (roomId.startsWith("vendor_")) {
+      const owner = roomId.slice("vendor_".length);
+      if (!req.vendorId || String(req.vendorId) !== String(owner)) {
+        return res
+          .status(403)
+          .json({ error: "That conversation isn't yours." });
+      }
+    }
+
     const messages = await Message.find({ roomId })
       .sort({ createdAt: 1 }) // oldest first so UI renders top → bottom
       .lean();
@@ -39,6 +53,11 @@ const getVendorChatRooms = async (req, res) => {
 
     if (!vendorId) {
       return res.status(400).json({ error: "vendorId is required." });
+    }
+
+    // The param names whose inbox to open, so it has to match the token.
+    if (String(vendorId) !== String(req.vendorId)) {
+      return res.status(403).json({ error: "That inbox isn't yours." });
     }
 
     // Get the latest message per room for preview
