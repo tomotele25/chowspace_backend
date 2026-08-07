@@ -18,9 +18,10 @@ const getInAppChatStatus = async (req, res) => {
       inAppChat: Boolean(vendor.inAppChat),
     });
   } catch (err) {
+    console.error("getInAppChatStatus error:", err.message);
     res.status(500).json({
       success: false,
-      message: err.message,
+      message: "Could not read the chat preference",
     });
   }
 };
@@ -58,9 +59,10 @@ const updateInAppChat = async (req, res) => {
       data: vendor,
     });
   } catch (err) {
+    console.error("updateInAppChat error:", err.message);
     res.status(500).json({
       success: false,
-      message: err.message,
+      message: "Could not update the chat preference",
     });
   }
 };

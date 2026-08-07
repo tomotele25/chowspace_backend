@@ -103,12 +103,10 @@ const createVendor = async (req, res) => {
     const normalisedEmail = String(email).trim().toLowerCase();
     const existingUser = await User.findOne({ email: normalisedEmail });
     if (existingUser) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "An account with this email already exists",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "An account with this email already exists",
+      });
     }
 
     const methods =
@@ -212,8 +210,7 @@ const createVendor = async (req, res) => {
     console.error("Error creating vendor:", error);
     res.status(500).json({
       success: false,
-      message: "Server error",
-      error: error.message,
+      message: "Could not create the vendor",
     });
   }
 };
@@ -228,6 +225,36 @@ const STATUS_FIELDS =
 // Needed by isPubliclyVisible alongside a product count.
 const VISIBILITY_FIELDS = "verificationStatus logo";
 
+/**
+ * What a vendor looks like to the public.
+ *
+ * An allowlist rather than a blocklist, because a blocklist forgets: the two
+ * listing queries below carried `accountNumber bankName subaccountId` to
+ * anyone loading the homepage, and `getVendorBySlug` had no projection at all
+ * — it returned the whole document, bcrypt password hash included.
+ *
+ * Anything added to the Vendor schema is private until it is named here.
+ */
+const PUBLIC_VENDOR_FIELDS = [
+  "businessName",
+  "slug",
+  "logo",
+  "coverImages",
+  "location",
+  "address",
+  "category",
+  "contact", // customers reach the vendor on WhatsApp from checkout
+  "averageRating",
+  "deliveryDuration",
+  "paymentMethods",
+  "paymentPreference",
+  "isPromoted",
+  "promotionExpiresAt",
+  "createdAt",
+  STATUS_FIELDS,
+  VISIBILITY_FIELDS,
+].join(" ");
+
 const withLiveStatus = (vendor, at) => ({
   ...(vendor.toObject ? vendor.toObject() : vendor),
   status: getEffectiveStatus(vendor, at),
@@ -241,7 +268,7 @@ const getAllVendor = async (req, res) => {
         isPromoted: true,
         promotionExpiresAt: { $gt: now },
       },
-      `businessName isPromoted promotionExpiresAt paymentPreference paymentMethods averageRating  logo location address category slug deliveryDuration createdAt coverImages ${STATUS_FIELDS} ${VISIBILITY_FIELDS}`,
+      PUBLIC_VENDOR_FIELDS,
     ).sort({ promotionExpiresAt: 1 });
     const regularVendors = await Vendor.find(
       {
@@ -250,7 +277,7 @@ const getAllVendor = async (req, res) => {
           { promotionExpiresAt: { $lte: now } },
         ],
       },
-      `businessName isPromoted promotionExpiresAt averageRating logo location address category slug accountNumber bankName subaccountId deliveryDuration createdAt paymentMethods ${STATUS_FIELDS} ${VISIBILITY_FIELDS}`,
+      PUBLIC_VENDOR_FIELDS,
     );
 
     const all = [...promotedVendors, ...regularVendors];
@@ -291,7 +318,13 @@ const getAllVendor = async (req, res) => {
 
 const getVendorBySlug = async (req, res) => {
   try {
-    const vendor = await Vendor.findOne({ slug: req.params.slug });
+    // Had no projection at all, so this public endpoint returned the entire
+    // Vendor document — bcrypt password hash, bank account and subaccount id
+    // included — to anyone who knew a storefront URL.
+    const vendor = await Vendor.findOne(
+      { slug: req.params.slug },
+      PUBLIC_VENDOR_FIELDS,
+    );
     if (!vendor) {
       return res.status(404).json({ message: "Vendor not found" });
     }
@@ -565,7 +598,6 @@ const updateVendorProfile = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Server error",
-      error: err.message,
     });
   }
 };

@@ -285,9 +285,9 @@ const getProductsByVendorSlug = async (req, res) => {
 
     res.status(200).json({ success: true, vendor, products });
   } catch (error) {
+    console.error("getProductsByVendorSlug error:", error.message);
     res.status(500).json({
       message: "Error fetching products by slug",
-      error: error.message,
     });
   }
 };

@@ -215,12 +215,10 @@ const resendVerification = async (req, res) => {
     return res.status(200).json(generic);
   } catch (err) {
     console.error("resendVerification error:", err);
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message: "Could not send the email. Try again shortly.",
-      });
+    return res.status(500).json({
+      success: false,
+      message: "Could not send the email. Try again shortly.",
+    });
   }
 };
 

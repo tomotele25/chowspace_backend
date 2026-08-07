@@ -88,9 +88,10 @@ const updateStoreHours = async (req, res) => {
       data: vendor.openingHours,
     });
   } catch (err) {
+    console.error("settings error:", err.message);
     res.status(500).json({
       success: false,
-      message: err.message,
+      message: "Something went wrong",
     });
   }
 };
@@ -130,9 +131,10 @@ const getLiveStoreStatus = async (req, res) => {
         : null,
     });
   } catch (err) {
+    console.error("settings error:", err.message);
     res.status(500).json({
       success: false,
-      message: err.message,
+      message: "Something went wrong",
     });
   }
 };
@@ -181,9 +183,10 @@ const setAutoHoursPreference = async (req, res) => {
       data: vendor,
     });
   } catch (err) {
+    console.error("settings error:", err.message);
     res.status(500).json({
       success: false,
-      message: err.message,
+      message: "Something went wrong",
     });
   }
 };
@@ -231,9 +234,10 @@ const syncAllVendorStatuses = async (req, res) => {
       updated: ops.length,
     });
   } catch (err) {
+    console.error("settings error:", err.message);
     res.status(500).json({
       success: false,
-      message: err.message,
+      message: "Something went wrong",
     });
   }
 };

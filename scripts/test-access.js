@@ -209,6 +209,48 @@ async function expect(label, { method = "GET", path, token, body }, wanted) {
   );
   await expect("dispute reasons", { path: "/api/dispute/reasons" }, [200]);
 
+  console.log("\nPublic responses must not carry secrets:\n");
+
+  // A status code says nothing about what came back in the body. These read
+  // the payload, because the leak was never a permission — it was a missing
+  // projection on an endpoint that was always meant to be public.
+  const SECRET_KEYS = [
+    "password",
+    "accountNumber",
+    "bankName",
+    "subaccountId",
+    "emailVerifyToken",
+  ];
+
+  async function expectNoSecrets(label, path) {
+    const res = await fetch(`${BASE}${path}`).catch(() => null);
+    if (!res || !res.ok) {
+      console.log(`  SKIP  ${label} (${res ? res.status : "unreachable"})`);
+      return;
+    }
+    const text = JSON.stringify(await res.json());
+    const found = SECRET_KEYS.filter((k) => text.includes(`"${k}"`));
+    const ok = found.length === 0;
+    if (ok) pass += 1;
+    else fail += 1;
+    console.log(
+      `  ${ok ? "PASS" : "FAIL"}  ${label}\n        ${path} -> ${ok ? "no secret fields" : `LEAKS ${found.join(", ")}`}`,
+    );
+  }
+
+  await expectNoSecrets("storefront listing", "/api/vendor/getVendors");
+
+  // Pick a real slug so the check exercises a populated document.
+  const listing = await fetch(`${BASE}/api/vendor/getVendors`)
+    .then((r) => r.json())
+    .catch(() => null);
+  const slug = listing?.vendors?.[0]?.slug;
+  if (slug) {
+    await expectNoSecrets("storefront page", `/api/vendor/${slug}`);
+  } else {
+    console.log("  SKIP  storefront page (no visible vendor to sample)");
+  }
+
   console.log(`\n${pass} passed, ${fail} failed.`);
   process.exit(fail === 0 ? 0 : 1);
 })();

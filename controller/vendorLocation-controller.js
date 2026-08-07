@@ -131,7 +131,8 @@ const getVendorLocationsByManager = async (req, res) => {
       locations,
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("vendorLocation error:", error.message);
+    res.status(500).json({ message: "Something went wrong" });
   }
 };
 
@@ -171,8 +172,8 @@ const updateVendorLocations = async (req, res) => {
       locations: updates,
     });
   } catch (error) {
-    console.error("Error updating vendor locations:", error);
-    res.status(500).json({ message: error.message });
+    console.error("Error updating vendor locations:", error.message);
+    res.status(500).json({ message: "Could not update your delivery zones" });
   }
 };
 

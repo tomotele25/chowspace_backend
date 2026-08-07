@@ -165,7 +165,6 @@ const initializeMoneiPayment = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to initialize payment",
-      error: error.message || error.toString(),
     });
   }
 };
