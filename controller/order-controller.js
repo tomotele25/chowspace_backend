@@ -4,6 +4,8 @@ const Order = require("../models/order");
 const Vendor = require("../models/vendor");
 const Wallet = require("../models/wallet");
 const { enqueueEmail } = require("../queues/email");
+const { creditVendorForOrder } = require("../utils/creditVendor");
+const { priceOrder } = require("../utils/pricing");
 const Customer = require("../models/customer");
 const crypto = require("crypto");
 
@@ -229,20 +231,12 @@ const verifyMoneiPayment = async (req, res) => {
       console.error("Email failed:", err);
     }
 
-    // 👉 Credit vendor wallet
-    const wallet = await Wallet.findOne({ vendorId: order.vendorId });
-    if (wallet) {
-      const amountPaid = depositStatus.amount; // already in naira
-      wallet.balance += amountPaid;
-      wallet.transactions.unshift({
-        type: "credit",
-        amount: amountPaid,
-        description: `Order #${order._id} - Payment via Monei`,
-      });
-      await wallet.save();
-    }
+    // Credits the vendor and marks the order paid in one transaction, creating
+    // the wallet if they have never been paid before. Credits vendorShare, so
+    // Chowspace's service fee is not handed over with it.
+    await creditVendorForOrder(order._id);
 
-    order.paymentStatus = "paid"; // already set in DB; keeps returned object in sync
+    order.paymentStatus = "paid"; // keeps the returned object in sync
     return res.status(200).json({
       success: true,
       message: "Payment verified",
@@ -297,31 +291,23 @@ const moneiWebhook = async (req, res) => {
 
     const reference = event.reference;
 
-    // FIX: same atomic guard as verifyMoneiPayment, so whichever of
-    // (client verify call / webhook) arrives first "wins" and the
-    // other becomes a safe no-op instead of double-crediting the wallet.
-    const order = await Order.findOneAndUpdate(
-      { paymentRef: reference, paymentStatus: { $ne: "paid" } },
-      { $set: { paymentStatus: "paid" } },
-      { new: false },
+    const order = await Order.findOne({ paymentRef: reference }).select(
+      "_id guestInfo customerInfo",
     );
 
     if (!order) {
-      return res.status(200).json({ received: true }); // not found, or already paid
+      return res.status(200).json({ received: true }); // nothing to match
     }
 
-    // 👉 Credit vendor wallet
-    const wallet = await Wallet.findOne({ vendorId: order.vendorId });
-    if (wallet) {
-      const amountPaid = event.amount; // already in naira
-      wallet.balance += amountPaid;
-      wallet.transactions.unshift({
-        type: "credit",
-        amount: amountPaid,
-        description: `Order #${order._id} - Monei webhook`,
-      });
-      await wallet.save();
-    }
+    // Marking paid and crediting the vendor happen together, guarded by
+    // walletCreditedAt. Previously the status was committed first and the
+    // credit followed in a separate write: a failure in between returned 500,
+    // this webhook was retried, the retry saw "already paid" and answered 200,
+    // and the credit was lost permanently and silently.
+    //
+    // Whichever of the webhook and the client's verify call arrives first
+    // wins; the other becomes a no-op rather than a second payment.
+    await creditVendorForOrder(order._id);
 
     // 👉 Send confirmation email
     try {
@@ -354,10 +340,12 @@ const createOrder = async (req, res) => {
     customerInfo,
     deliveryMethod,
     note,
-    totalAmount,
+    // What the browser thinks the order costs. Checked against the server's
+    // own figure below, never stored as given.
+    totalAmount: claimedTotal,
     vendorId,
-    packFees,
-    deliveryFee,
+    deliveryLocation,
+    packCount,
     orderId,
   } = req.body;
 
@@ -365,7 +353,6 @@ const createOrder = async (req, res) => {
     !items ||
     (!guestInfo && !customerInfo) ||
     !deliveryMethod ||
-    !totalAmount ||
     !vendorId ||
     !orderId
   ) {
@@ -376,19 +363,49 @@ const createOrder = async (req, res) => {
     const closed = await rejectIfClosed(vendorId, res);
     if (closed) return closed;
 
+    // Every amount is recomputed from the database. Before this, totalAmount,
+    // deliveryFee and packFees were stored exactly as posted, so a crafted
+    // request could buy a ₦20,000 cart for ₦100.
+    const { ok, error, priced } = await priceOrder({
+      vendorId,
+      items,
+      deliveryLocation,
+      packCount,
+    });
+
+    if (!ok) return res.status(400).json({ message: error });
+
+    // If our price is higher than the one the customer agreed to, something
+    // changed while they were checking out. Charging the difference without
+    // asking would be wrong, so the order is refused and they re-confirm.
+    // A lower price is fine — we simply charge less than they expected.
+    if (typeof claimedTotal === "number" && priced.total > claimedTotal) {
+      return res.status(409).json({
+        message:
+          "Prices changed while you were ordering. Please review your cart.",
+        total: priced.total,
+      });
+    }
+
     const confirmationToken = crypto.randomBytes(16).toString("hex");
 
     const newOrder = await Order.create({
       orderId,
       vendorId,
-      items,
+      // Names and prices from the server, so the receipt matches what was
+      // actually charged.
+      items: priced.lines,
       guestInfo: guestInfo || null,
       customerInfo: customerInfo || null,
       deliveryMethod,
+      deliveryLocation: deliveryLocation || null,
       note: note || "",
-      totalAmount,
-      packFees: packFees || [],
-      deliveryFee: deliveryFee || 0,
+      itemsTotal: priced.itemsTotal,
+      packFees: priced.packFees,
+      deliveryFee: priced.deliveryFee,
+      serviceFee: priced.serviceFee,
+      totalAmount: priced.total,
+      vendorShare: priced.vendorShare,
       paymentMethod: "direct",
       paymentStatus: "pending",
       confirmationToken,

@@ -77,6 +77,14 @@ const vendorSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    // Charged per pack at checkout. It was read by the packing-fee endpoint
+    // but never declared, so every write was dropped and the frontend fell
+    // back to a hardcoded 300.
+    packingFee: {
+      type: Number,
+      min: 0,
+      default: 300,
+    },
     deliveryDuration: {
       type: Number,
       required: false,
