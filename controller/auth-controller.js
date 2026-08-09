@@ -6,8 +6,21 @@ const Vendor = require("../models/vendor");
 const crypto = require("crypto");
 const { enqueueEmail } = require("../queues/email");
 
+/**
+ * Anything from req.body that reaches a Mongo query has to be forced to a
+ * string first.
+ *
+ * Express parses JSON, so a field declared as a string can arrive as an
+ * object: `{"email":{"$gt":""}}` is a valid Mongo operator, and passing it
+ * straight to findOne matches the first document in the collection rather than
+ * nothing. Coercing turns that into a harmless literal that matches no one.
+ */
+const asString = (value) =>
+  typeof value === "string" ? value.trim() : String(value ?? "").trim();
+
 const signup = async (req, res) => {
-  const { fullname, contact, email, password } = req.body;
+  const { fullname, contact, password } = req.body;
+  const email = asString(req.body.email).toLowerCase();
 
   try {
     if (!fullname || !contact || !email || !password) {
@@ -64,70 +77,83 @@ const signup = async (req, res) => {
 };
 
 const login = async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res
-      .status(400)
-      .json({ success: false, message: "All fields are required" });
-  }
+  // Coerced before it reaches Mongo. Sent as `{"email":{"$gt":""}}` this used
+  // to match the first user in the collection; bcrypt.compare would then throw
+  // on a non-string and, with no try/catch here, the rejection escaped the
+  // handler entirely.
+  const email = asString(req.body.email).toLowerCase();
+  const password = asString(req.body.password);
 
-  const user = await User.findOne({ email });
-  if (!user) {
-    return res
-      .status(400)
-      .json({ success: false, message: "Invalid credentials" });
-  }
-
-  const isMatch = await bcrypt.compare(password, user.password);
-  if (!isMatch) {
-    return res
-      .status(400)
-      .json({ success: false, message: "Invalid credentials" });
-  }
-
-  // Vendors sign themselves up now, so the address has to be proven before
-  // they get in. Only enforced for vendors — customers and the accounts that
-  // predate self-signup are unaffected. The code lets the frontend offer a
-  // resend button instead of a dead end.
-  if (user.role === "vendor" && user.emailVerified === false) {
-    return res.status(403).json({
-      success: false,
-      code: "EMAIL_NOT_VERIFIED",
-      message: "Confirm your email address to log in. Check your inbox.",
-    });
-  }
-
-  // Fetch vendor data if user is a vendor
-  let vendorData = {};
-  if (user.role === "vendor") {
-    const vendor = await Vendor.findOne({ user: user._id });
-    if (vendor) {
-      vendorData = {
-        vendorId: vendor._id,
-        businessName: vendor.businessName,
-        location: vendor.location,
-        address: vendor.address,
-        contact: vendor.contact,
-        paymentPreference: vendor.paymentPreference,
-      };
+  try {
+    if (!email || !password) {
+      return res
+        .status(400)
+        .json({ success: false, message: "All fields are required" });
     }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid credentials" });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid credentials" });
+    }
+
+    // Vendors sign themselves up now, so the address has to be proven before
+    // they get in. Only enforced for vendors — customers and the accounts that
+    // predate self-signup are unaffected. The code lets the frontend offer a
+    // resend button instead of a dead end.
+    if (user.role === "vendor" && user.emailVerified === false) {
+      return res.status(403).json({
+        success: false,
+        code: "EMAIL_NOT_VERIFIED",
+        message: "Confirm your email address to log in. Check your inbox.",
+      });
+    }
+
+    // Fetch vendor data if user is a vendor
+    let vendorData = {};
+    if (user.role === "vendor") {
+      const vendor = await Vendor.findOne({ user: user._id });
+      if (vendor) {
+        vendorData = {
+          vendorId: vendor._id,
+          businessName: vendor.businessName,
+          location: vendor.location,
+          address: vendor.address,
+          contact: vendor.contact,
+          paymentPreference: vendor.paymentPreference,
+        };
+      }
+    }
+
+    const accessToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "2d",
+    });
+
+    return res.status(200).json({
+      success: true,
+      accessToken,
+      user: {
+        id: user._id,
+        fullname: user.fullname,
+        email: user.email,
+        role: user.role,
+        ...vendorData,
+      },
+    });
+  } catch (err) {
+    console.error("Login error:", err.message);
+    return res
+      .status(500)
+      .json({ success: false, message: "Could not sign you in" });
   }
-
-  const accessToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-    expiresIn: "2d",
-  });
-
-  return res.status(200).json({
-    success: true,
-    accessToken,
-    user: {
-      id: user._id,
-      fullname: user.fullname,
-      email: user.email,
-      role: user.role,
-      ...vendorData,
-    },
-  });
 };
 
 /** Hash a raw token the same way createVendor stored it. */

@@ -100,20 +100,60 @@ router.post("/chat/:roomId/message", attachUserIfPresent, async (req, res) => {
 // guest who placed it, for whom the order id is the only credential there is.
 router.get("/chat/:roomId", attachUserIfPresent, getMessages);
 
-router.post("/upload", upload.single("file"), (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded." });
-    }
-
-    return res.status(200).json({
-      url: req.file.path,
-      filename: req.file.originalname,
-    });
-  } catch (err) {
-    console.error("POST /api/upload error:", err.message);
-    return res.status(500).json({ error: "Upload failed." });
-  }
+/**
+ * Chat attachments — usually a customer photographing a transfer receipt.
+ *
+ * Cannot demand a login: the customer is normally a guest. But it was open to
+ * anonymous callers with no size limit and no type filter, which made it free
+ * unbounded storage in our Cloudinary account, serving arbitrary files from a
+ * URL under our domain.
+ *
+ * Three things close that without shutting guests out: the caller must be
+ * either staff or attached to a real order, the file must be an image under
+ * 5MB (middleware/upload.js), and the route is rate limited.
+ */
+const uploadLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 20,
+  message: { status: 429, error: "Too many uploads. Please wait a few minutes." },
 });
+
+const mustBelongSomewhere = async (req, res, next) => {
+  if (req.user) return next(); // signed-in staff or customer
+
+  // A guest has to name an order that exists. It is a weak credential, but it
+  // ties every anonymous upload to a real order rather than to nobody.
+  const orderId = req.query.orderId || req.body?.orderId;
+  if (!orderId) {
+    return res
+      .status(401)
+      .json({ error: "Sign in, or attach this to one of your orders." });
+  }
+
+  const exists = await Order.exists({ orderId: String(orderId) });
+  if (!exists) {
+    return res.status(404).json({ error: "That order doesn't exist." });
+  }
+  next();
+};
+
+router.post(
+  "/upload",
+  uploadLimiter,
+  attachUserIfPresent,
+  mustBelongSomewhere,
+  (req, res) => {
+    upload.single("file")(req, res, (err) => {
+      if (err) return uploadError(err, res);
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded." });
+      }
+      return res.status(200).json({
+        url: req.file.path,
+        filename: req.file.originalname,
+      });
+    });
+  },
+);
 
 module.exports = router;

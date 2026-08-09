@@ -9,7 +9,11 @@ const router = express.Router();
 const rateLimit = require("express-rate-limit");
 
 const loginLimiter = rateLimit({
-  windowMs: 1 * 60 * 100,
+  // Was `1 * 60 * 100` — six seconds, not sixty. The window reset before the
+  // limit ever bit, so five attempts every six seconds was 3,000 an hour from
+  // a single IP. The two limiters below always used `* 1000`, which is what
+  // made the typo hard to see on review.
+  windowMs: 1 * 60 * 1000,
   max: 5,
   message: {
     status: 429,
