@@ -3,6 +3,7 @@ const router = express.Router();
 const Message = require("../models/message");
 const { getMessages, getVendorChatRooms } = require("../controller/chat");
 const upload = require("../middleware/upload");
+const rateLimit = require("express-rate-limit");
 const {
   requireRole,
   attachUserIfPresent,
