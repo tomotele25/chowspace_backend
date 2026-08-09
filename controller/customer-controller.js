@@ -5,28 +5,38 @@ const mongoose = require("mongoose");
 
 const getAllCustomers = async (req, res) => {
   try {
-    const customers = await Customer.find(
-      {},
-      {
-        phone: 1,
-        birthday: 1,
-        fullname: 1,
-        hasBirthday: 1,
-        _id: 0,
-      },
-    );
+    // Paginated, because this returns every customer's name and phone number.
+    // Unbounded, a single request was the whole marketing list — and until
+    // recently the route had no authentication at all.
+    const limit = Math.min(Number(req.query.limit) || 100, 500);
+    const page = Math.max(Number(req.query.page) || 1, 1);
 
-    if (!customers || customers.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Customers not found",
-      });
-    }
+    const [customers, total] = await Promise.all([
+      Customer.find(
+        {},
+        {
+          phone: 1,
+          birthday: 1,
+          fullname: 1,
+          hasBirthday: 1,
+          _id: 0,
+        },
+      )
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      Customer.countDocuments({}),
+    ]);
 
+    // An empty page is a valid answer, not a 400 — that made "no customers"
+    // indistinguishable from a broken request.
     res.status(200).json({
       success: true,
       message: "Customers fetched successfully",
       data: customers,
+      page,
+      limit,
+      total,
     });
   } catch (error) {
     console.error("Unable to fetch customers", error.message);
@@ -83,18 +93,24 @@ const getOrderHistoryByCustomer = async (req, res) => {
       .status(400)
       .json({ success: false, message: "Customer ID required" });
   }
+  // The id in the URL proves nothing — before this check, changing it in the
+  // address bar returned somebody else's order history, addresses included.
+  if (String(customerId) !== String(req.user._id)) {
+    return res
+      .status(403)
+      .json({ success: false, message: "You can only view your own orders" });
+  }
+
   try {
     const orders = await Order.find({ customerId }).sort({ createdAt: -1 });
-    if (!orders || orders.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "No orders found for this customer" });
-    }
-    return res.status(200).json({ success: true, orders });
+    // An empty history is not an error. Returning 404 made "no orders yet"
+    // and "the request failed" look identical to the page.
+    return res.status(200).json({ success: true, orders: orders || [] });
   } catch (error) {
+    console.error("getOrderHistoryByCustomer error:", error.message);
     return res
       .status(500)
-      .json({ success: false, message: "Server error", error: error.message });
+      .json({ success: false, message: "Could not load your orders" });
   }
 };
 
@@ -151,8 +167,7 @@ const saveBirthday = async (req, res) => {
     console.error("saveBirthday error:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Server error",
-      error: error.message,
+      message: "Could not save that birthday",
     });
   }
 };

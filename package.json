@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@monei-js/node-sdk": "^2.0.1",
+    "@upstash/qstash": "^2.11.3",
     "axios": "^1.10.0",
     "bcrypt": "^6.0.0",
     "cloudinary": "^1.41.3",

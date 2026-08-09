@@ -1,5 +1,5 @@
 const Vendor = require("../models/vendor");
-const { getEffectiveStatus } = require("../utils/Storehours");
+const { getEffectiveStatus, activeOverride } = require("../utils/Storehours");
 
 const WEEKDAYS = [
   "Monday",
@@ -13,30 +13,25 @@ const WEEKDAYS = [
 
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/; // "HH:mm", 24-hour
 
-
 /* ══════════════════════════════════════════
    Store hours
    ══════════════════════════════════════════ */
 
 // PUT /api/vendor/update-hours
 // Body: { openingHours: [{ day, open, close, closed }, ...] }
-// Vendor identity comes from protectVendor middleware, not the URL —
-// matches your existing frontend call. Checks the common attachment
-// patterns since I haven't seen protectVendor's implementation.
+// Vendor identity comes from the token, never the URL or body.
 const updateStoreHours = async (req, res) => {
   try {
-    const targetId =
-      req.vendorId ||
-      req.vendor?._id ||
-      req.user?.vendorId ||
-      req.body.vendorId ||
-      req.params.vendorId;
+    // The old chain ended in `req.body.vendorId || req.params.vendorId`. The
+    // guard in front of it never rejected customers, and a customer's token
+    // resolved no vendor — so the fallback took over and let the caller name
+    // whichever store they wanted to rewrite the hours of.
+    const targetId = req.vendorId;
 
     if (!targetId) {
-      return res.status(401).json({
+      return res.status(403).json({
         success: false,
-        message:
-          "Could not identify vendor from request. Check how protectVendor attaches vendor identity to req.",
+        message: "No store is linked to this account",
       });
     }
 
@@ -93,9 +88,10 @@ const updateStoreHours = async (req, res) => {
       data: vendor.openingHours,
     });
   } catch (err) {
+    console.error("settings error:", err.message);
     res.status(500).json({
       success: false,
-      message: err.message,
+      message: "Something went wrong",
     });
   }
 };
@@ -110,7 +106,7 @@ const getLiveStoreStatus = async (req, res) => {
     const { vendorId } = req.params;
 
     const vendor = await Vendor.findById(vendorId).select(
-      "status openingHours timezone useAutoHours",
+      "status openingHours timezone useAutoHours statusOverride",
     );
 
     if (!vendor) {
@@ -126,11 +122,19 @@ const getLiveStoreStatus = async (req, res) => {
       success: true,
       status,
       useAutoHours: Boolean(vendor.useAutoHours),
+      // True when the vendor has no hours of their own and is running on the
+      // platform default, so the UI can say so instead of implying they saved it.
+      usingDefaultHours: !vendor.openingHours?.length,
+      // Set while a manual open/close from the dashboard is still in force.
+      overrideUntil: activeOverride(vendor)
+        ? vendor.statusOverride.expiresAt
+        : null,
     });
   } catch (err) {
+    console.error("settings error:", err.message);
     res.status(500).json({
       success: false,
-      message: err.message,
+      message: "Something went wrong",
     });
   }
 };
@@ -138,7 +142,6 @@ const getLiveStoreStatus = async (req, res) => {
 // PATCH /api/vendor/:vendorId/auto-hours
 const setAutoHoursPreference = async (req, res) => {
   try {
-    const { vendorId } = req.params;
     const { useAutoHours } = req.body;
 
     if (typeof useAutoHours !== "boolean") {
@@ -148,7 +151,18 @@ const setAutoHoursPreference = async (req, res) => {
       });
     }
 
-    const vendor = await Vendor.findById(vendorId);
+    // Resolve the vendor from the token, not the URL param. Trusting the param
+    // let any authenticated vendor flip another vendor's auto-hours.
+    const targetId = req.vendorId || req.vendor?._id || req.user?.vendorId;
+
+    if (!targetId) {
+      return res.status(403).json({
+        success: false,
+        message: "No vendor is linked to this account",
+      });
+    }
+
+    const vendor = await Vendor.findById(targetId);
 
     if (!vendor) {
       return res.status(404).json({
@@ -157,15 +171,8 @@ const setAutoHoursPreference = async (req, res) => {
       });
     }
 
-    if (
-      useAutoHours &&
-      (!vendor.openingHours || vendor.openingHours.length === 0)
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Set your store hours before turning on automatic open/close.",
-      });
-    }
+    // No "set your hours first" guard any more — a vendor with no hours falls
+    // back to the platform default of 09:00–21:00, so auto mode is always valid.
 
     vendor.useAutoHours = useAutoHours;
     await vendor.save({ validateModifiedOnly: true });
@@ -176,9 +183,10 @@ const setAutoHoursPreference = async (req, res) => {
       data: vendor,
     });
   } catch (err) {
+    console.error("settings error:", err.message);
     res.status(500).json({
       success: false,
-      message: err.message,
+      message: "Something went wrong",
     });
   }
 };
@@ -199,27 +207,37 @@ const syncAllVendorStatuses = async (req, res) => {
 
     const vendors = await Vendor.find({
       $or: [{ useAutoHours: true }, { status: "opened" }],
-    }).select("status openingHours timezone useAutoHours");
+    }).select("status openingHours timezone useAutoHours statusOverride");
 
-    let updated = 0;
+    // One bulkWrite rather than a save() per vendor. Every vendor is on
+    // auto-hours now, so this loop covers the whole table and a sequential
+    // round trip each would push against Vercel's function timeout as the
+    // platform grows.
+    const ops = [];
     for (const vendor of vendors) {
       const nextStatus = getEffectiveStatus(vendor);
       if (vendor.status !== nextStatus) {
-        vendor.status = nextStatus;
-        await vendor.save({ validateModifiedOnly: true });
-        updated += 1;
+        ops.push({
+          updateOne: {
+            filter: { _id: vendor._id },
+            update: { $set: { status: nextStatus } },
+          },
+        });
       }
     }
+
+    if (ops.length) await Vendor.bulkWrite(ops, { ordered: false });
 
     res.status(200).json({
       success: true,
       checked: vendors.length,
-      updated,
+      updated: ops.length,
     });
   } catch (err) {
+    console.error("settings error:", err.message);
     res.status(500).json({
       success: false,
-      message: err.message,
+      message: "Something went wrong",
     });
   }
 };

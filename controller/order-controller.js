@@ -3,7 +3,10 @@ const axios = require("axios");
 const Order = require("../models/order");
 const Vendor = require("../models/vendor");
 const Wallet = require("../models/wallet");
-const { orderConfirmationEmail } = require("../mailer");
+const { enqueueEmail } = require("../queues/email");
+const { creditVendorForOrder } = require("../utils/creditVendor");
+const { priceOrder } = require("../utils/pricing");
+const { payoutVendorForOrder } = require("../utils/moneiPayout");
 const Customer = require("../models/customer");
 const crypto = require("crypto");
 
@@ -13,6 +16,54 @@ const { MoneiSDK, DepositMethodsEnum } = require("monei-sdk");
 // Confirm which env var name is actually set on Vercel — MONEI_API_KEY
 // or MONEI_SECRET_KEY — and make sure this line matches it exactly.
 const monei = new MoneiSDK({ apiKey: process.env.MONEI_SECRET_KEY });
+
+const Product = require("../models/product");
+const { getEffectiveStatus } = require("../utils/Storehours");
+const { isPubliclyVisible } = require("../utils/vendorVisibility");
+
+/**
+ * Refuses an order when the vendor's store is shut.
+ *
+ * Nothing enforced this before — "closed" was decorative on the backend, and
+ * a customer who loaded a menu at 8:59pm could still submit at 9:05pm. Now
+ * that every vendor runs on a schedule that actually closes them, this is what
+ * makes closing time mean something.
+ *
+ * Returns a response when it rejects, or null when the order may proceed.
+ */
+const rejectIfClosed = async (vendorId, res) => {
+  const vendor = await Vendor.findById(vendorId).select(
+    "businessName status openingHours timezone useAutoHours statusOverride verificationStatus logo",
+  );
+
+  if (!vendor) {
+    return res
+      .status(404)
+      .json({ success: false, message: "Vendor not found" });
+  }
+
+  // Not verified, or storefront incomplete — they shouldn't have been
+  // reachable at all, so this is a backstop against a stale page or a
+  // hand-crafted request.
+  const productCount = await Product.countDocuments({ vendor: vendor._id });
+  if (!isPubliclyVisible(vendor, productCount)) {
+    return res.status(409).json({
+      success: false,
+      code: "VENDOR_NOT_LIVE",
+      message: `${vendor.businessName} isn't accepting orders yet.`,
+    });
+  }
+
+  if (getEffectiveStatus(vendor) !== "opened") {
+    return res.status(409).json({
+      success: false,
+      code: "VENDOR_CLOSED",
+      message: `${vendor.businessName} is closed right now and can't take orders.`,
+    });
+  }
+
+  return null;
+};
 
 const initializeMoneiPayment = async (req, res) => {
   try {
@@ -41,13 +92,45 @@ const initializeMoneiPayment = async (req, res) => {
       });
     }
 
+    // Guard the paid path too — this creates a pending order, so skipping the
+    // check here would let a customer pay a store that is closed or not yet live.
+    const blocked = await rejectIfClosed(vendorId, res);
+    if (blocked) return blocked;
+
+    // The last payment path that still took its amount from the browser.
+    // Repriced here like the direct path, so what the customer is asked to
+    // transfer is decided by our database.
+    const { ok, error, priced } = await priceOrder({
+      vendorId,
+      items: orderPayload.items,
+      deliveryLocation: orderPayload.deliveryLocation,
+      packCount: orderPayload.packCount,
+    });
+    if (!ok) return res.status(400).json({ success: false, message: error });
+
+    if (typeof amount === "number" && priced.total > amount) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Prices changed while you were ordering. Please review your cart.",
+        total: priced.total,
+      });
+    }
+
     const newOrderData = {
       orderId: tx_ref,
       vendorId,
-      items: orderPayload.items,
+      items: priced.lines,
       deliveryMethod: orderPayload.deliveryMethod,
+      deliveryLocation: orderPayload.deliveryLocation || null,
       note: orderPayload.note || "",
-      totalAmount: amount,
+      itemsTotal: priced.itemsTotal,
+      packFees: priced.packFees,
+      deliveryFee: priced.deliveryFee,
+      serviceFee: priced.serviceFee,
+      totalAmount: priced.total,
+      vendorShare: priced.vendorShare,
+      paymentMethod: "monei",
       paymentRef: tx_ref,
       paymentStatus: "pending",
     };
@@ -79,14 +162,28 @@ const initializeMoneiPayment = async (req, res) => {
     // NOTE: Monei's amount field is already in naira (not kobo) — confirmed
     // by the "exceeds ₦50,000 limit" error that only makes sense if a
     // ₦2,400 charge was being sent as ₦240,000 via a ×100 conversion.
+    // `amount` here is what Chowspace must RECEIVE — the order total including
+    // our service fee. Monei adds its own charge (a flat 2.2% at the time of
+    // writing) and returns `totalAmount`, which is what the customer actually
+    // transfers. Taking that figure from the response rather than computing it
+    // means the customer is charged exactly right even if Monei changes its
+    // pricing, and it is the customer who bears the processing fee.
     const deposit = await monei.deposit.initializeDeposit(
       DepositMethodsEnum.BANK_TRANSFER,
       {
-        amount: Number(amount), // naira, as-is — no kobo conversion
+        amount: priced.total, // naira, as-is — no kobo conversion
         reference: tx_ref,
         currency: "NGN",
         narration: `Order ${pendingOrder._id} — ${vendor.businessName}`,
       },
+    );
+
+    const customerPays = Number(deposit.totalAmount ?? deposit.amount);
+    const providerFee = Number(deposit.moneiFee ?? 0);
+
+    await Order.updateOne(
+      { _id: pendingOrder._id },
+      { $set: { moneiFee: providerFee } },
     );
 
     return res.status(200).json({
@@ -98,7 +195,11 @@ const initializeMoneiPayment = async (req, res) => {
         accountNumber: deposit.accountNumber,
         bankName: deposit.bankName,
         accountName: deposit.accountName,
-        amount: deposit.amount,
+        // What to transfer. `orderTotal` and `providerFee` are broken out so
+        // the chat can show why it is more than the basket.
+        amount: customerPays,
+        orderTotal: priced.total,
+        providerFee,
         expiry_datetime: deposit.expiry_datetime,
         note: deposit.note,
         status: deposit.status,
@@ -112,7 +213,6 @@ const initializeMoneiPayment = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to initialize payment",
-      error: error.message || error.toString(),
     });
   }
 };
@@ -164,29 +264,34 @@ const verifyMoneiPayment = async (req, res) => {
     try {
       const emailAddress = order.guestInfo?.email || order.customerInfo?.email;
       if (emailAddress) {
-        await orderConfirmationEmail(
-          emailAddress,
-          "Your Chowspace Order Has Been Confirmed 🎉",
-        );
+        // Queued: this runs inside the payment webhook, and the provider
+        // retries the whole webhook if we answer slowly — which would credit
+        // the wallet twice. Handing the email off keeps the response quick.
+        await enqueueEmail({
+          template: "order-confirmation",
+          to: emailAddress,
+          data: { subject: "Your Chowspace Order Has Been Confirmed 🎉" },
+        });
       }
     } catch (err) {
       console.error("Email failed:", err);
     }
 
-    // 👉 Credit vendor wallet
-    const wallet = await Wallet.findOne({ vendorId: order.vendorId });
-    if (wallet) {
-      const amountPaid = depositStatus.amount; // already in naira
-      wallet.balance += amountPaid;
-      wallet.transactions.unshift({
-        type: "credit",
-        amount: amountPaid,
-        description: `Order #${order._id} - Payment via Monei`,
-      });
-      await wallet.save();
+    // Credits the vendor and marks the order paid in one transaction, creating
+    // the wallet if they have never been paid before. Credits vendorShare, so
+    // Chowspace's service fee is not handed over with it.
+    const credited = await creditVendorForOrder(order._id);
+
+    // Then move it on to their bank straight away. Deliberately after the
+    // transaction rather than inside it: a bank transfer is a call to another
+    // company and can take seconds, and holding a database transaction open
+    // across that would block writes on the order. If it fails the money stays
+    // in their wallet — see utils/moneiPayout.js.
+    if (credited.credited) {
+      await payoutVendorForOrder(order._id);
     }
 
-    order.paymentStatus = "paid"; // already set in DB; keeps returned object in sync
+    order.paymentStatus = "paid"; // keeps the returned object in sync
     return res.status(200).json({
       success: true,
       message: "Payment verified",
@@ -201,39 +306,95 @@ const verifyMoneiPayment = async (req, res) => {
   }
 };
 
-// FIX: this route MUST be mounted with express.raw() before express.json()
-// in server.js, e.g.:
-//   app.post("/api/orders/monei/webhook", express.raw({ type: "application/json" }), moneiWebhook);
-// so req.body arrives as a raw Buffer for HMAC verification below.
-// Confirm the exact header name + signing scheme against docs.monei.cc's
-// webhooks page — "monei-signature" and MONEI_WEBHOOK_SECRET are placeholders.
+/**
+ * Monei calls this when a payment settles.
+ *
+ * Mounted with express.raw() ahead of express.json() so req.body is the exact
+ * bytes Monei sent — see routes/order-router.js.
+ *
+ * The header is `x-monei-signature`, per docs.monei.cc/security/webhooks. The
+ * previous code read `monei-signature`, which no request ever carries, so every
+ * delivery was rejected as unsigned and no payment was ever confirmed by
+ * webhook — leaving confirmation to depend entirely on the customer keeping
+ * their browser open long enough to call verify.
+ *
+ * The secret comes from the Monei dashboard: Settings → Webhooks → Add
+ * Webhook, then copy the secret it shows.
+ */
 const moneiWebhook = async (req, res) => {
   try {
-    const signature = req.headers["monei-signature"];
-    const webhookSecret = process.env.MONEI_WEBHOOK_SECRET;
+    const signature =
+      req.headers["x-monei-signature"] || req.headers["monei-signature"];
+    // Monei's dashboard does not always issue a separate per-webhook secret,
+    // and their docs don't say which credential signs the payload. Both
+    // candidates are tried.
+    //
+    // This weakens nothing: an HMAC only verifies against the key that
+    // produced it, so offering two keys cannot help anyone forge a signature
+    // — it just means we recognise whichever one Monei used. Set
+    // MONEI_WEBHOOK_SECRET once known and it takes precedence.
+    const secrets = [
+      process.env.MONEI_WEBHOOK_SECRET,
+      process.env.MONEI_SECRET_KEY,
+    ].filter(Boolean);
 
-    if (!signature || !webhookSecret) {
-      console.error("Monei webhook: missing signature or webhook secret");
+    if (!signature || secrets.length === 0) {
+      console.error(
+        "Monei webhook rejected:",
+        secrets.length === 0
+          ? "no signing credential configured — no payment can be confirmed by webhook"
+          : "no x-monei-signature header",
+      );
       return res.status(401).json({ received: false });
     }
 
-    const expected = crypto
-      .createHmac("sha256", webhookSecret)
-      .update(req.body) // raw Buffer — see note above
-      .digest("hex");
+    const raw = req.body.toString("utf8");
 
-    const sigBuf = Buffer.from(signature, "utf8");
-    const expBuf = Buffer.from(expected, "utf8");
+    // Monei's documented example signs JSON.stringify(payload) — the parsed
+    // body re-serialised. That is normally byte-identical to what was sent,
+    // but not if they ever pretty-print or we sit behind a proxy that
+    // reformats. Both are accepted so a formatting difference cannot silently
+    // reject real payments.
+    const candidates = [raw];
+    try {
+      candidates.push(JSON.stringify(JSON.parse(raw)));
+    } catch {
+      // Unparseable body — the raw comparison below will fail it anyway.
+    }
 
-    if (
-      sigBuf.length !== expBuf.length ||
-      !crypto.timingSafeEqual(sigBuf, expBuf)
-    ) {
+    const sigBuf = Buffer.from(String(signature), "utf8");
+    let matchedWith = null;
+
+    for (const secret of secrets) {
+      for (const body of candidates) {
+        const expBuf = Buffer.from(
+          crypto.createHmac("sha256", secret).update(body).digest("hex"),
+          "utf8",
+        );
+        if (
+          sigBuf.length === expBuf.length &&
+          crypto.timingSafeEqual(sigBuf, expBuf)
+        ) {
+          matchedWith =
+            secret === process.env.MONEI_WEBHOOK_SECRET
+              ? "MONEI_WEBHOOK_SECRET"
+              : "MONEI_SECRET_KEY";
+          break;
+        }
+      }
+      if (matchedWith) break;
+    }
+
+    if (!matchedWith) {
       console.error("Monei webhook: invalid signature");
       return res.status(401).json({ received: false });
     }
 
-    const event = JSON.parse(req.body.toString("utf8"));
+    // Logged so the first real delivery tells us which credential Monei signs
+    // with — the thing their documentation leaves out.
+    console.log(`[monei] webhook verified using ${matchedWith}`);
+
+    const event = JSON.parse(raw);
 
     if (event.status !== "COMPLETED" && event.status !== "SUCCESS") {
       return res.status(200).json({ received: true });
@@ -241,40 +402,40 @@ const moneiWebhook = async (req, res) => {
 
     const reference = event.reference;
 
-    // FIX: same atomic guard as verifyMoneiPayment, so whichever of
-    // (client verify call / webhook) arrives first "wins" and the
-    // other becomes a safe no-op instead of double-crediting the wallet.
-    const order = await Order.findOneAndUpdate(
-      { paymentRef: reference, paymentStatus: { $ne: "paid" } },
-      { $set: { paymentStatus: "paid" } },
-      { new: false },
+    const order = await Order.findOne({ paymentRef: reference }).select(
+      "_id guestInfo customerInfo",
     );
 
     if (!order) {
-      return res.status(200).json({ received: true }); // not found, or already paid
+      return res.status(200).json({ received: true }); // nothing to match
     }
 
-    // 👉 Credit vendor wallet
-    const wallet = await Wallet.findOne({ vendorId: order.vendorId });
-    if (wallet) {
-      const amountPaid = event.amount; // already in naira
-      wallet.balance += amountPaid;
-      wallet.transactions.unshift({
-        type: "credit",
-        amount: amountPaid,
-        description: `Order #${order._id} - Monei webhook`,
-      });
-      await wallet.save();
+    // Marking paid and crediting the vendor happen together, guarded by
+    // walletCreditedAt. Previously the status was committed first and the
+    // credit followed in a separate write: a failure in between returned 500,
+    // this webhook was retried, the retry saw "already paid" and answered 200,
+    // and the credit was lost permanently and silently.
+    //
+    // Whichever of the webhook and the client's verify call arrives first
+    // wins; the other becomes a no-op rather than a second payment.
+    const credited = await creditVendorForOrder(order._id);
+
+    if (credited.credited) {
+      await payoutVendorForOrder(order._id);
     }
 
     // 👉 Send confirmation email
     try {
       const emailAddress = order.guestInfo?.email || order.customerInfo?.email;
       if (emailAddress) {
-        await orderConfirmationEmail(
-          emailAddress,
-          "Your Chowspace Order Has Been Confirmed 🎉",
-        );
+        // Queued: this runs inside the payment webhook, and the provider
+        // retries the whole webhook if we answer slowly — which would credit
+        // the wallet twice. Handing the email off keeps the response quick.
+        await enqueueEmail({
+          template: "order-confirmation",
+          to: emailAddress,
+          data: { subject: "Your Chowspace Order Has Been Confirmed 🎉" },
+        });
       }
     } catch (err) {
       console.error("Email failed:", err);
@@ -294,10 +455,12 @@ const createOrder = async (req, res) => {
     customerInfo,
     deliveryMethod,
     note,
-    totalAmount,
+    // What the browser thinks the order costs. Checked against the server's
+    // own figure below, never stored as given.
+    totalAmount: claimedTotal,
     vendorId,
-    packFees,
-    deliveryFee,
+    deliveryLocation,
+    packCount,
     orderId,
   } = req.body;
 
@@ -305,7 +468,6 @@ const createOrder = async (req, res) => {
     !items ||
     (!guestInfo && !customerInfo) ||
     !deliveryMethod ||
-    !totalAmount ||
     !vendorId ||
     !orderId
   ) {
@@ -313,19 +475,52 @@ const createOrder = async (req, res) => {
   }
 
   try {
+    const closed = await rejectIfClosed(vendorId, res);
+    if (closed) return closed;
+
+    // Every amount is recomputed from the database. Before this, totalAmount,
+    // deliveryFee and packFees were stored exactly as posted, so a crafted
+    // request could buy a ₦20,000 cart for ₦100.
+    const { ok, error, priced } = await priceOrder({
+      vendorId,
+      items,
+      deliveryLocation,
+      packCount,
+    });
+
+    if (!ok) return res.status(400).json({ message: error });
+
+    // If our price is higher than the one the customer agreed to, something
+    // changed while they were checking out. Charging the difference without
+    // asking would be wrong, so the order is refused and they re-confirm.
+    // A lower price is fine — we simply charge less than they expected.
+    if (typeof claimedTotal === "number" && priced.total > claimedTotal) {
+      return res.status(409).json({
+        message:
+          "Prices changed while you were ordering. Please review your cart.",
+        total: priced.total,
+      });
+    }
+
     const confirmationToken = crypto.randomBytes(16).toString("hex");
 
     const newOrder = await Order.create({
       orderId,
       vendorId,
-      items,
+      // Names and prices from the server, so the receipt matches what was
+      // actually charged.
+      items: priced.lines,
       guestInfo: guestInfo || null,
       customerInfo: customerInfo || null,
       deliveryMethod,
+      deliveryLocation: deliveryLocation || null,
       note: note || "",
-      totalAmount,
-      packFees: packFees || [],
-      deliveryFee: deliveryFee || 0,
+      itemsTotal: priced.itemsTotal,
+      packFees: priced.packFees,
+      deliveryFee: priced.deliveryFee,
+      serviceFee: priced.serviceFee,
+      totalAmount: priced.total,
+      vendorShare: priced.vendorShare,
       paymentMethod: "direct",
       paymentStatus: "pending",
       confirmationToken,
@@ -369,11 +564,11 @@ const priceConfirmation = async (req, res) => {
 };
 
 const getAllOrders = async (req, res) => {
-  const { vendorId } = req.query;
-
+  // Scoped to the token, never the query string. `?vendorId=` used to be the
+  // only filter, and omitting it returned every order the platform has ever
+  // taken — names, phones and delivery addresses included.
   try {
-    const query = vendorId ? { vendorId } : {};
-    const orders = await Order.find(query)
+    const orders = await Order.find({ vendorId: req.vendorId })
       .sort({ createdAt: -1 })
       .populate("customerId", "fullname email");
 
@@ -383,7 +578,7 @@ const getAllOrders = async (req, res) => {
       message: "Orders fetched successfully",
     });
   } catch (err) {
-    console.error("Fetching orders failed:", err);
+    console.error("Fetching orders failed:", err.message);
     res.status(500).json({ message: "Failed to fetch orders." });
   }
 };
@@ -395,9 +590,15 @@ const getOrderById = async (req, res) => {
     const order = await Order.findById(orderId);
     if (!order) return res.status(404).json({ message: "Order not found." });
 
+    // Belonging to a store is what earns you the customer's address, not
+    // knowing the id.
+    if (String(order.vendorId) !== String(req.vendorId)) {
+      return res.status(403).json({ message: "That order isn't yours." });
+    }
+
     res.json(order);
   } catch (err) {
-    console.error("Fetching order failed:", err);
+    console.error("Fetching order failed:", err.message);
     res.status(500).json({ message: "Failed to fetch order." });
   }
 };
@@ -410,13 +611,26 @@ const updateOrderStatus = async (req, res) => {
     const order = await Order.findById(orderId);
     if (!order) return res.status(404).json({ message: "Order not found." });
 
+    if (String(order.vendorId) !== String(req.vendorId)) {
+      return res.status(403).json({ message: "That order isn't yours." });
+    }
+
     if (status) order.status = status;
-    if (paymentStatus) order.paymentStatus = paymentStatus;
+
+    // paymentStatus is deliberately not settable here. This route was open,
+    // so anyone could mark any order paid; even guarded, "paid" should only
+    // ever be written by the payment provider's webhook or verify call.
+    if (paymentStatus) {
+      return res.status(400).json({
+        message:
+          "Payment status is set by the payment provider, not by this route.",
+      });
+    }
 
     await order.save();
     res.json(order);
   } catch (err) {
-    console.error("Updating order failed:", err);
+    console.error("Updating order failed:", err.message);
     res.status(500).json({ message: "Failed to update order." });
   }
 };

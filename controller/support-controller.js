@@ -141,6 +141,23 @@ const getMessagesForTicket = async (req, res) => {
   try {
     const ticketId = req.params.ticketId;
 
+    // Shared by the customer and admin routes. Admins see any thread; a
+    // customer may only see their own — without this, changing the id in the
+    // URL read somebody else's support conversation.
+    if (req.user?.role !== "admin") {
+      const ticket = await SupportTicket.findById(ticketId).select("userId");
+      if (!ticket) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Ticket not found" });
+      }
+      if (String(ticket.userId) !== String(req.user?._id)) {
+        return res
+          .status(403)
+          .json({ success: false, message: "That ticket isn't yours" });
+      }
+    }
+
     const messages = await SupportMessage.find({ ticketId }).sort({
       createdAt: 1,
     });

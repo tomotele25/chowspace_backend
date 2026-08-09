@@ -18,16 +18,20 @@ const getInAppChatStatus = async (req, res) => {
       inAppChat: Boolean(vendor.inAppChat),
     });
   } catch (err) {
+    console.error("getInAppChatStatus error:", err.message);
     res.status(500).json({
       success: false,
-      message: err.message,
+      message: "Could not read the chat preference",
     });
   }
 };
 
 const updateInAppChat = async (req, res) => {
   try {
-    const { vendorId } = req.params;
+    // Resolved from the token, not the URL. The param named the vendor
+    // outright, so any signed-in account could switch another store's chat
+    // preference and change where its customers were sent.
+    const vendorId = req.vendorId;
     const { inAppChat } = req.body;
 
     if (typeof inAppChat !== "boolean") {
@@ -55,9 +59,10 @@ const updateInAppChat = async (req, res) => {
       data: vendor,
     });
   } catch (err) {
+    console.error("updateInAppChat error:", err.message);
     res.status(500).json({
       success: false,
-      message: err.message,
+      message: "Could not update the chat preference",
     });
   }
 };

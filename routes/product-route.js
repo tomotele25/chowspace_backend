@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const protect = require("../middleware/auth");
+const { requireRole } = require("../middleware/requireRole");
 const upload = require("../middleware/upload");
 
 const {
@@ -14,24 +14,38 @@ const {
   deleteProductById,
 } = require("../controller/product-controller");
 
+// Managers run the menu day to day, so they share the vendor's product routes.
+const storeStaff = requireRole("vendor", "manager");
+
 router.post(
   "/product/createProduct",
-  protect,
+  storeStaff,
   upload.single("image"),
-  createProduct
+  createProduct,
 );
 
-router.get("/product/my-products", protect, getVendorProducts);
+router.get("/product/my-products", storeStaff, getVendorProducts);
+
+// Public storefront reads.
 router.get("/product/vendor/:id", getProductsByVendor);
 router.get("/product/vendor/slug/:slug", getProductsByVendorSlug);
-router.patch("/product/:id/toggle-availability", protect, updateAvailability);
+
+router.patch(
+  "/product/:id/toggle-availability",
+  storeStaff,
+  updateAvailability,
+);
 router.patch(
   "/product/update/:id",
-  protect,
+  storeStaff,
   upload.single("image"),
-  updateProduct
+  updateProduct,
 );
-router.delete("/product-delete/:id", deleteProductById);
-router.patch("/product/rearrange", protect, reorderProducts);
+
+// Was open to anonymous callers while every sibling route was guarded — any
+// object id deleted any vendor's product.
+router.delete("/product-delete/:id", storeStaff, deleteProductById);
+
+router.patch("/product/rearrange", storeStaff, reorderProducts);
 
 module.exports = router;

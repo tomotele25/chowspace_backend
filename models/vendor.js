@@ -77,6 +77,27 @@ const vendorSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    // Charged per pack at checkout. It was read by the packing-fee endpoint
+    // but never declared, so every write was dropped and the frontend fell
+    // back to a hardcoded 300.
+    // The provider's numeric bank code, needed to transfer money out. The
+    // human-readable bankName is not enough — Monei lists 700 banks and the
+    // name alone does not identify one.
+    bankCode: {
+      type: String,
+      default: null,
+    },
+    // The name the bank holds for the account, confirmed at save time. Shown
+    // back to the vendor so a mistyped digit is caught before money moves.
+    accountName: {
+      type: String,
+      default: null,
+    },
+    packingFee: {
+      type: Number,
+      min: 0,
+      default: 300,
+    },
     deliveryDuration: {
       type: Number,
       required: false,
@@ -121,9 +142,12 @@ const vendorSchema = new mongoose.Schema(
     ],
 
     // ── Store hours ──
+    // On by default: a vendor who never opens Settings should still trade.
+    // With no openingHours set, utils/Storehours.js substitutes the platform
+    // default of 09:00–21:00 rather than leaving the store shut forever.
     useAutoHours: {
       type: Boolean,
-      default: false,
+      default: true,
     },
     timezone: {
       type: String,
@@ -150,6 +174,48 @@ const vendorSchema = new mongoose.Schema(
         close: { type: String, default: null },
       },
     ],
+
+    // Set when a vendor manually flips their store from the dashboard.
+    // Expires at the next scheduled open or close, so closing early once
+    // doesn't silently disable their schedule for good.
+    statusOverride: {
+      status: { type: String, enum: ["opened", "closed"] },
+      expiresAt: { type: Date },
+    },
+
+    // ── Verification ──
+    // Tier 2: Nigerian business documents, reviewed by an admin. Required
+    // before a self-signed-up vendor can be seen by customers. The 41 vendors
+    // that predate self-signup are grandfathered straight to "approved".
+    verificationStatus: {
+      type: String,
+      enum: ["awaiting_documents", "under_review", "approved", "rejected"],
+      default: "awaiting_documents",
+    },
+    verificationDocuments: [
+      {
+        kind: {
+          type: String,
+          enum: ["cac", "identification", "proof_of_address"],
+          required: true,
+        },
+        url: { type: String, required: true },
+        uploadedAt: { type: Date, default: Date.now },
+      },
+    ],
+    // Shown to the vendor when rejected, so they know what to fix.
+    reviewNote: { type: String },
+    reviewedAt: { type: Date },
+    reviewedBy: { type: mongoose.Types.ObjectId, ref: "User" },
+
+    // Which payment methods this vendor offers their customers. Multi-select.
+    // Supersedes paymentPreference, which is kept because login and the vendor
+    // list still return it; removing it is unrelated churn.
+    paymentMethods: {
+      type: [String],
+      enum: ["whatsapp", "paystack", "monei"],
+      default: ["whatsapp"],
+    },
   },
   { timestamps: true },
 );

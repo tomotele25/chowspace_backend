@@ -1,7 +1,9 @@
 const bcrypt = require("bcrypt");
+const crypto = require("crypto");
 const User = require("../models/user");
 const Manager = require("../models/manager");
 const Vendor = require("../models/vendor");
+const { enqueueEmail } = require("../queues/email");
 
 async function createManager(req, res) {
   try {
@@ -19,8 +21,15 @@ async function createManager(req, res) {
       return res.status(400).json({ message: "User already exists" });
     }
 
+    // The vendor dashboard used to send the literal "manager123", which shipped
+    // in the public JS bundle — so every manager account on the platform had
+    // the same publicly known password. Generated here instead and emailed to
+    // the manager; nothing on the client ever chooses it.
+    const tempPassword =
+      password || crypto.randomBytes(9).toString("base64url");
+
     const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    const hashedPassword = await bcrypt.hash(tempPassword, salt);
 
     const user = await User.create({
       fullname,
@@ -39,6 +48,18 @@ async function createManager(req, res) {
 
     await newManager.save();
     await newManager.populate("vendor");
+
+    // Queued, and it falls back to sending inline if the queue is down — the
+    // manager cannot sign in without this.
+    await enqueueEmail({
+      template: "manager-invite",
+      to: email,
+      data: {
+        fullname,
+        businessName: vendor.businessName,
+        tempPassword,
+      },
+    });
 
     res.status(201).json({
       success: true,
@@ -74,7 +95,11 @@ async function getManagers(req, res) {
 
 const getManagersWithStatus = async (req, res) => {
   try {
-    const managers = await Manager.find().populate("vendor");
+    // Scoped to the caller's own store. Unscoped, this handed any signed-in
+    // vendor the full list of managers and vendor ids on the platform.
+    const managers = await Manager.find({ vendor: req.vendorId }).populate(
+      "vendor",
+    );
 
     const result = managers.map((manager) => ({
       _id: manager._id,
@@ -102,6 +127,28 @@ const updateProfile = async (req, res) => {
         .json({ success: false, message: "Manager not found" });
     }
 
+    // Two callers are legitimate — a manager editing themselves, and the
+    // vendor who created them. Anyone else is trying to take over an account,
+    // which is what this route allowed outright while it was unguarded.
+    if (req.user.role === "manager") {
+      if (String(manager._id) !== String(req.user._id)) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only edit your own profile",
+        });
+      }
+    } else {
+      const owned = await Manager.findOne({
+        user: manager._id,
+        vendor: req.vendorId,
+      }).select("_id");
+      if (!owned) {
+        return res
+          .status(403)
+          .json({ success: false, message: "That manager isn't on your team" });
+      }
+    }
+
     if (fullname) manager.fullname = fullname;
     if (email) manager.email = email;
 
@@ -121,19 +168,19 @@ const updateProfile = async (req, res) => {
   }
 };
 
-
 const getManagerByVendorId = async (req, res) => {
   try {
-    const { vendorId } = req.query; 
-
-    if (!vendorId) {
-      return res.status(400).json({ success: false, message: "Vendor ID is required" });
-    }
-
-    const manager = await Manager.findOne({ vendor: vendorId }).select("user");
+    // The vendor comes from the token. Taking it from the query string mapped
+    // any vendorId to its manager's user id for anyone who asked — which is
+    // the lookup that made the unauthenticated password reset above easy.
+    const manager = await Manager.findOne({ vendor: req.vendorId }).select(
+      "user",
+    );
 
     if (!manager) {
-      return res.status(404).json({ success: false, message: "Manager not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Manager not found" });
     }
 
     return res.status(200).json({ success: true, managerId: manager.user });
@@ -147,5 +194,5 @@ module.exports = {
   getManagers,
   getManagersWithStatus,
   updateProfile,
-  getManagerByVendorId
+  getManagerByVendorId,
 };
