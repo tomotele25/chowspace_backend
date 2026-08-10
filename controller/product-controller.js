@@ -3,6 +3,7 @@ const Vendor = require("../models/vendor");
 const Manager = require("../models/manager");
 const product = require("../models/product");
 const { isPubliclyVisible } = require("../utils/vendorVisibility");
+const { getEffectiveStatus } = require("../utils/Storehours");
 
 // Create a product
 const createProduct = async (req, res) => {
@@ -283,7 +284,17 @@ const getProductsByVendorSlug = async (req, res) => {
       return res.status(404).json({ message: "Vendor not found" });
     }
 
-    res.status(200).json({ success: true, vendor, products });
+    // Same fix as getAllVendor/getVendorBySlug: the stored `status` field
+    // only refreshes on the (now once-daily) cron, so it lags real time.
+    // Compute it live instead of trusting the stale field.
+    const vendorWithLiveStatus = {
+      ...vendor.toObject(),
+      status: getEffectiveStatus(vendor),
+    };
+
+    res
+      .status(200)
+      .json({ success: true, vendor: vendorWithLiveStatus, products });
   } catch (error) {
     console.error("getProductsByVendorSlug error:", error.message);
     res.status(500).json({
