@@ -320,6 +320,47 @@ app.get("/privacy", (req, res) => {
 });
 
 /* ==============================
+   🆘 SUPPORT
+   Public page required for the App Store Connect "Support URL" field.
+============================== */
+app.get("/support", (req, res) => {
+  res.set("Content-Type", "text/html; charset=utf-8").send(`<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chowspace Support</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 20px; line-height: 1.6; color: #1a1a1a; }
+  h1 { font-size: 26px; }
+  h2 { font-size: 17px; margin-top: 28px; }
+  a { color: #AE2108; }
+  .card { background: #F7F7F7; border-radius: 12px; padding: 16px 20px; margin-top: 12px; }
+</style>
+</head>
+<body>
+<h1>Chowspace Support</h1>
+<p>Need help with an order, your account, or the app? We're happy to help.</p>
+
+<h2>Contact us</h2>
+<div class="card">
+  <p><strong>Email:</strong> <a href="mailto:tomotelechristopher25@gmail.com">tomotelechristopher25@gmail.com</a></p>
+  <p>We typically respond within 24–48 hours.</p>
+</div>
+
+<h2>In the app</h2>
+<p>You can also reach us directly from the app: open the <strong>Support</strong> tab to raise a ticket about an order, or use in-app chat to message a vendor about an active order.</p>
+
+<h2>Account help</h2>
+<p>To update your profile, log out, or permanently delete your account and data, go to <strong>Profile</strong> in the app.</p>
+
+<h2>Privacy</h2>
+<p>See our <a href="/privacy">Privacy Policy</a> for details on how we handle your data.</p>
+</body>
+</html>`);
+});
+
+/* ==============================
    🚀 START
 ============================== */
 const startServer = async () => {
