@@ -4,7 +4,9 @@ const {
   signup,
   verifyEmail,
   resendVerification,
+  deleteAccount,
 } = require("../controller/auth-controller");
+const { requireAuth } = require("../middleware/requireRole");
 const router = express.Router();
 const rateLimit = require("express-rate-limit");
 
@@ -46,5 +48,6 @@ const resendLimiter = rateLimit({
 router.post("/auth/user/signup", registerLimiter, signup);
 router.post("/auth/user/login", loginLimiter, login);
 router.post("/auth/resend-verification", resendLimiter, resendVerification);
+router.delete("/auth/user/me", requireAuth, deleteAccount);
 
 module.exports = router;

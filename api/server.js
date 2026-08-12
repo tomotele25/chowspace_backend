@@ -252,6 +252,74 @@ const orderLimiter = rateLimit({
 app.get("/", (req, res) => res.send("🚀 Chowspace API running..."));
 
 /* ==============================
+   📄 PRIVACY POLICY
+   Public page required by app store review — linked from the mobile app's
+   Profile screen and entered as the Privacy Policy URL in App Store Connect
+   / Play Console.
+============================== */
+app.get("/privacy", (req, res) => {
+  res.set("Content-Type", "text/html; charset=utf-8").send(`<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chowspace Privacy Policy</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 20px; line-height: 1.6; color: #1a1a1a; }
+  h1 { font-size: 24px; }
+  h2 { font-size: 18px; margin-top: 32px; }
+  .updated { color: #666; font-size: 14px; }
+</style>
+</head>
+<body>
+<h1>Chowspace Privacy Policy</h1>
+<p class="updated">Last updated: August 5, 2026</p>
+
+<p>Chowspace ("we", "us", "our") operates the Chowspace mobile app, which connects customers with local food, pharmacy, mall, and drinks vendors for ordering. This policy explains what information we collect through the app, why we collect it, and how it's used.</p>
+
+<h2>Information we collect</h2>
+<p><strong>Account information.</strong> When you create an account, we collect your full name, email address, phone number, and password (stored securely, never in plain text). This is used to identify you, let you log in, and let vendors contact you about your orders.</p>
+<p><strong>Location information.</strong> You choose a delivery area from a fixed list of supported locations (e.g. Abeokuta, Yaba, Ikeja) so we can show you vendors that deliver there. At checkout, you also provide a specific delivery address as free text. We do not collect your device's precise GPS location — location in this app is a manual selection and a typed address, not continuous tracking.</p>
+<p><strong>Order information.</strong> When you place an order, we collect the items ordered, quantities, prices, delivery method, delivery address, and phone number, so the order can be prepared and delivered.</p>
+<p><strong>Chat messages and images.</strong> If you contact a vendor through in-app chat, we store the text messages and any images you choose to send, so the conversation history is available to you and the vendor for that order.</p>
+<p><strong>Payment-related information.</strong> For orders paid through our payment partner (Monei), we do not collect or store your card or bank account details — payment is handled by generating a one-time virtual bank account for the transfer. For orders placed with Abeokuta-based vendors, checkout redirects to WhatsApp, where your conversation with the vendor is subject to WhatsApp's own privacy policy, not this one.</p>
+
+<h2>How we use this information</h2>
+<ul>
+  <li>To create and manage your account</li>
+  <li>To process and deliver your orders</li>
+  <li>To let you communicate with vendors about an order</li>
+  <li>To show you vendors and delivery options relevant to your selected area</li>
+  <li>To respond to support requests</li>
+</ul>
+<p>We do not sell your personal information to third parties.</p>
+
+<h2>Who we share information with</h2>
+<ul>
+  <li><strong>Vendors</strong> you order from receive your name, phone number, delivery address, and order details, so they can fulfill your order.</li>
+  <li><strong>Monei</strong>, our payment processing partner, receives the information necessary to generate a payment account for orders you choose to pay for that way.</li>
+  <li>We may disclose information if required by law.</li>
+</ul>
+
+<h2>Data retention</h2>
+<p>We retain account and order information for as long as your account is active, and as needed to resolve disputes or comply with legal obligations.</p>
+
+<h2>Your choices</h2>
+<p>You can update your profile information within the app. You can permanently delete your account and associated profile data at any time from Profile → Delete account. You can also reach us at tomotelechristopher25@gmail.com with any privacy questions.</p>
+
+<h2>Children's privacy</h2>
+<p>Chowspace is not directed at children under 13, and we do not knowingly collect information from children under 13.</p>
+
+<h2>Changes to this policy</h2>
+<p>We may update this policy from time to time. Material changes will be reflected by updating the "Last updated" date above.</p>
+
+<h2>Contact us</h2>
+<p>Questions about this policy or your data can be sent to tomotelechristopher25@gmail.com.</p>
+</body>
+</html>`);
+});
+
+/* ==============================
    🚀 START
 ============================== */
 const startServer = async () => {

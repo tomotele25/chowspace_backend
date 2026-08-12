@@ -3,6 +3,7 @@ const bcrypt = require("bcrypt");
 const User = require("../models/user");
 const jwt = require("jsonwebtoken");
 const Vendor = require("../models/vendor");
+const Customer = require("../models/customer");
 const crypto = require("crypto");
 const { enqueueEmail } = require("../queues/email");
 
@@ -248,4 +249,59 @@ const resendVerification = async (req, res) => {
   }
 };
 
-module.exports = { signup, login, verifyEmail, resendVerification };
+/**
+ * DELETE /api/auth/user/me
+ *
+ * Self-service account deletion (Apple App Store guideline 5.1.1(v): apps
+ * that support account creation must let the user delete the account
+ * in-app, not just request it). Requires the current password so a stolen
+ * session token alone can't wipe an account.
+ *
+ * Orders are left in place — they're the vendor's/platform's transaction
+ * record, not solely the customer's data — but they're orphaned from any
+ * personal profile once the Customer document is gone.
+ */
+const deleteAccount = async (req, res) => {
+  const password = asString(req.body?.password);
+
+  try {
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        message: "Enter your password to confirm account deletion",
+      });
+    }
+
+    const user = await User.findById(req.user._id).select("+password");
+    if (!user) {
+      return res.status(404).json({ success: false, message: "Account not found" });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ success: false, message: "Incorrect password" });
+    }
+
+    await Customer.deleteMany({ user: user._id });
+    await user.deleteOne();
+
+    return res.status(200).json({
+      success: true,
+      message: "Your account has been deleted",
+    });
+  } catch (err) {
+    console.error("deleteAccount error:", err.message);
+    return res.status(500).json({
+      success: false,
+      message: "Could not delete your account. Try again shortly.",
+    });
+  }
+};
+
+module.exports = {
+  signup,
+  login,
+  verifyEmail,
+  resendVerification,
+  deleteAccount,
+};
