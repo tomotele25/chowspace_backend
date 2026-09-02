@@ -462,6 +462,10 @@ const createOrder = async (req, res) => {
     deliveryLocation,
     packCount,
     orderId,
+    // Optional: set by the mobile app for signed-in customers so their order
+    // history (getOrderHistoryByCustomer) can find this order by customerId,
+    // not only by phone.
+    customerId,
   } = req.body;
 
   if (
@@ -507,6 +511,7 @@ const createOrder = async (req, res) => {
     const newOrder = await Order.create({
       orderId,
       vendorId,
+      customerId: customerId || null,
       // Names and prices from the server, so the receipt matches what was
       // actually charged.
       items: priced.lines,
