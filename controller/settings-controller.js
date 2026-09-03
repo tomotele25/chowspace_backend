@@ -1,5 +1,60 @@
 const Vendor = require("../models/vendor");
+const Order = require("../models/order");
 const { getEffectiveStatus, activeOverride } = require("../utils/Storehours");
+const {
+  computeDisplayRating,
+  orderVolumePercentiles,
+} = require("../utils/rating");
+const { recentOrderCountsByVendor } = require("../utils/orderStats");
+
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Recompute every vendor's displayRating from its written reviews plus the
+ * last 30 days of paid orders. Runs inside the daily cron below (Vercel Hobby
+ * allows one cron a day, so it piggybacks on the status sync rather than
+ * having its own schedule).
+ *
+ * @returns {Promise<number>} how many vendors were updated
+ */
+const recomputeAllVendorRatings = async () => {
+  const since = new Date(Date.now() - THIRTY_DAYS_MS);
+  const counts = await recentOrderCountsByVendor(Order, since);
+
+  const vendors = await Vendor.find().select("ratings");
+  const percentiles = orderVolumePercentiles(
+    counts,
+    vendors.map((v) => v._id),
+  );
+  const now = new Date();
+  const ops = [];
+  for (const vendor of vendors) {
+    const id = String(vendor._id);
+    const orders30d = counts.get(id) || 0;
+    const ratingPercentile = percentiles.get(id) || 0;
+    const displayRating = computeDisplayRating({
+      ratings: vendor.ratings || [],
+      popPercentile: ratingPercentile,
+    });
+    ops.push({
+      updateOne: {
+        filter: { _id: vendor._id },
+        update: {
+          $set: {
+            orders30d,
+            ratingPercentile,
+            displayRating,
+            reviewCount: (vendor.ratings || []).length,
+            ratingUpdatedAt: now,
+          },
+        },
+      },
+    });
+  }
+
+  if (ops.length) await Vendor.bulkWrite(ops, { ordered: false });
+  return ops.length;
+};
 
 const WEEKDAYS = [
   "Monday",
@@ -228,10 +283,20 @@ const syncAllVendorStatuses = async (req, res) => {
 
     if (ops.length) await Vendor.bulkWrite(ops, { ordered: false });
 
+    // Piggyback the once-a-day rating refresh on the same cron hit. A failure
+    // here must not fail the status sync, so it is caught and logged.
+    let ratingsUpdated = 0;
+    try {
+      ratingsUpdated = await recomputeAllVendorRatings();
+    } catch (err) {
+      console.error("rating recompute failed:", err.message);
+    }
+
     res.status(200).json({
       success: true,
       checked: vendors.length,
       updated: ops.length,
+      ratingsUpdated,
     });
   } catch (err) {
     console.error("settings error:", err.message);
@@ -247,4 +312,5 @@ module.exports = {
   getLiveStoreStatus,
   setAutoHoursPreference,
   syncAllVendorStatuses,
+  recomputeAllVendorRatings,
 };

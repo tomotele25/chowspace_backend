@@ -40,10 +40,22 @@ const allowedOrigins = [
   "https://www.chowspace.ng",
 ];
 
+// Next.js dev falls forward to 3001, 3002, ... when 3000 is taken, so off
+// production allow any localhost port rather than pinning one.
+const allowLocalhost = process.env.NODE_ENV !== "production";
+const isLocalhostOrigin = (origin) =>
+  allowLocalhost &&
+  (/^http:\/\/localhost:\d+$/.test(origin) ||
+    /^http:\/\/127\.0\.0\.1:\d+$/.test(origin));
+
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (
+        !origin ||
+        allowedOrigins.includes(origin) ||
+        isLocalhostOrigin(origin)
+      ) {
         callback(null, true);
       } else {
         callback(new Error("Origin not allowed"));

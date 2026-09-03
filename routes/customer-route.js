@@ -7,7 +7,16 @@ const {
   saveBirthday,
   getAllCustomers,
   getWrapped,
+  getWrappedByPhone,
 } = require("../controller/customer-controller");
+const rateLimit = require("express-rate-limit");
+
+// Public, unauthenticated Wrapped-by-phone lookup — keep probing slow.
+const wrappedLookupLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: { status: 429, error: "Too many lookups. Try again later." },
+});
 const { requireRole } = require("../middleware/requireRole");
 
 // Every route here was open. `/customerDetails` returned every customer's
@@ -42,5 +51,13 @@ router.post("/customerDetails", requireRole("admin"), getAllCustomers);
 // "Year in food" summary for the signed-in customer. Own data only — the
 // controller reads req.user._id, never a param.
 router.get("/customer/wrapped", requireRole("customer"), getWrapped);
+
+// Same summary for someone with no account, by the phone number they order
+// with. Aggregate-only response, rate-limited.
+router.get(
+  "/customer/wrapped-by-phone",
+  wrappedLookupLimiter,
+  getWrappedByPhone,
+);
 
 module.exports = router;

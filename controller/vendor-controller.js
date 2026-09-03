@@ -18,6 +18,7 @@ const {
   productCountsByVendor,
 } = require("../utils/vendorVisibility");
 const { enqueueEmail } = require("../queues/email");
+const { computeDisplayRating } = require("../utils/rating");
 
 const BANK_CODES = {
   "Access Bank": "044",
@@ -260,6 +261,8 @@ const PUBLIC_VENDOR_FIELDS = [
   "category",
   "contact", // customers reach the vendor on WhatsApp from checkout
   "averageRating",
+  "reviewCount",
+  "displayRating",
   "deliveryDuration",
   "paymentMethods",
   "paymentPreference",
@@ -691,8 +694,11 @@ const rateVendor = async (req, res) => {
   }
   const vendor = await Vendor.findById(vendorId);
   if (!vendor) return res.status(404).json({ message: "Vendor not found." });
+  // One review per customer per vendor. The old check compared an ObjectId to
+  // a raw req.user._id (also an ObjectId, never stringified), so === was
+  // always false and duplicates slipped through — hence .toString() on both.
   const existingRating = vendor.ratings.find(
-    (r) => r.customerId.toString() === customerId,
+    (r) => r.customerId.toString() === customerId.toString(),
   );
   if (existingRating) {
     return res
@@ -703,6 +709,14 @@ const rateVendor = async (req, res) => {
   const totalStars = vendor.ratings.reduce((sum, r) => sum + r.stars, 0);
   vendor.averageRating =
     Math.round((totalStars / vendor.ratings.length) * 10) / 10;
+  vendor.reviewCount = vendor.ratings.length;
+  // Re-blend with the peer rank we last cached. The rank itself is refreshed
+  // by the daily cron; here we just fold in the new review.
+  vendor.displayRating = computeDisplayRating({
+    ratings: vendor.ratings,
+    popPercentile: vendor.ratingPercentile || 0,
+  });
+  vendor.ratingUpdatedAt = new Date();
   await vendor.save();
   return res.status(200).json({ message: "Rating submitted successfully." });
 };
@@ -710,11 +724,35 @@ const rateVendor = async (req, res) => {
 const getReviews = async (req, res) => {
   try {
     const { vendorId } = req.params;
-    const vendor = await Vendor.findById(vendorId).select("ratings");
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 10));
+
+    const vendor = await Vendor.findById(vendorId)
+      .select(
+        "businessName slug ratings averageRating displayRating reviewCount",
+      )
+      .populate("ratings.customerId", "fullname");
     if (!vendor) {
       return res.status(404).json({ message: "Vendor not found" });
     }
-    return res.status(200).json({ reviews: vendor.ratings });
+
+    // Newest first, then paginate.
+    const sorted = [...vendor.ratings].sort(
+      (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
+    );
+    const start = (page - 1) * limit;
+    const slice = sorted.slice(start, start + limit);
+
+    return res.status(200).json({
+      businessName: vendor.businessName,
+      slug: vendor.slug,
+      averageRating: vendor.averageRating,
+      displayRating: vendor.displayRating,
+      reviewCount: vendor.reviewCount || vendor.ratings.length,
+      page,
+      hasMore: start + limit < sorted.length,
+      reviews: slice,
+    });
   } catch (error) {
     console.error("Error fetching reviews:", error);
     return res.status(500).json({ message: "Internal server error" });

@@ -112,6 +112,20 @@ const vendorSchema = new mongoose.Schema(
       },
     ],
     averageRating: { type: Number, default: 0 },
+    // Number of written reviews, so the storefront can show a count next to
+    // the stars without re-counting the ratings array on every request.
+    reviewCount: { type: Number, default: 0 },
+    // The rating customers actually see — a blend of real reviews and recent
+    // order volume, floored so an active vendor never looks bad for lack of
+    // written reviews. Computed by utils/rating.js, refreshed on each new
+    // review and by the daily cron.
+    displayRating: { type: Number, default: 4.3 },
+    // Cached count of non-cancelled orders in the trailing 30 days, and this
+    // vendor's 0..1 peer rank by that count. Set by the daily cron and fed
+    // into displayRating.
+    orders30d: { type: Number, default: 0 },
+    ratingPercentile: { type: Number, default: 0 },
+    ratingUpdatedAt: { type: Date },
     isPromoted: {
       type: Boolean,
       default: false,

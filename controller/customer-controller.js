@@ -213,20 +213,118 @@ const orderPersona = (weekdayCounts, hourCounts) => {
   return "The Everyday Regular";
 };
 
+// 0…/234… phone variants, same normalisation saveBirthday uses.
+const phoneVariants = (raw) => {
+  const d = String(raw || "").replace(/\D/g, "");
+  if (d.length < 7) return [];
+  const out = [d];
+  if (d.startsWith("234")) out.push("0" + d.slice(3));
+  else if (d.startsWith("0")) out.push("234" + d.slice(1));
+  return out;
+};
+
+const yearWindow = (rawYear) => {
+  const now = new Date();
+  const year = Number(rawYear) || now.getFullYear();
+  const start = new Date(year, 0, 1);
+  const end = year === now.getFullYear() ? now : new Date(year + 1, 0, 1);
+  return { year, start, end };
+};
+
+// Turn a list of the year's orders into the Wrapped payload. Shared by the
+// signed-in route and the public phone route.
+const summarizeWrapped = (orders, year) => {
+  const vendorName = (o) => o.vendorId?.businessName || "a vendor";
+
+  let totalSpent = 0;
+  let totalItems = 0;
+  const byVendor = new Map();
+  const byItem = new Map();
+  const byMonth = Array(12).fill(0);
+  const byWeekday = Array(7).fill(0);
+  const byHour = Array(24).fill(0);
+  let biggestOrder = orders[0];
+
+  for (const o of orders) {
+    const amt = o.totalAmount || 0;
+    totalSpent += amt;
+    if (amt > (biggestOrder.totalAmount || 0)) biggestOrder = o;
+
+    const d = new Date(o.createdAt);
+    byMonth[d.getMonth()] += 1;
+    byWeekday[d.getDay()] += 1;
+    byHour[d.getHours()] += 1;
+
+    const vid = String(o.vendorId?._id || o.vendorId || "unknown");
+    const v = byVendor.get(vid) || {
+      name: vendorName(o),
+      slug: o.vendorId?.slug || null,
+      logo: o.vendorId?.logo || null,
+      orders: 0,
+      spent: 0,
+    };
+    v.orders += 1;
+    v.spent += amt;
+    byVendor.set(vid, v);
+
+    for (const it of o.items || []) {
+      const q = it.quantity || 1;
+      totalItems += q;
+      if (it.name) byItem.set(it.name, (byItem.get(it.name) || 0) + q);
+    }
+  }
+
+  const vendorsRanked = [...byVendor.values()].sort(
+    (a, b) => b.orders - a.orders || b.spent - a.spent,
+  );
+  const itemsRanked = [...byItem.entries()]
+    .map(([name, qty]) => ({ name, qty }))
+    .sort((a, b) => b.qty - a.qty);
+  const busiestMonthIdx = byMonth.indexOf(Math.max(...byMonth));
+  const busiestWeekdayIdx = byWeekday.indexOf(Math.max(...byWeekday));
+  const firstOrder = orders[0];
+
+  return {
+    hasData: true,
+    year,
+    totalOrders: orders.length,
+    totalSpent,
+    totalItems,
+    uniqueVendors: byVendor.size,
+    topVendor: vendorsRanked[0] || null,
+    runnerUpVendors: vendorsRanked.slice(1, 3),
+    topItems: itemsRanked.slice(0, 3),
+    favoriteDish: itemsRanked[0] || null,
+    busiestMonth: {
+      name: MONTHS[busiestMonthIdx],
+      orders: byMonth[busiestMonthIdx],
+    },
+    favoriteDay: {
+      name: WEEKDAYS[busiestWeekdayIdx],
+      orders: byWeekday[busiestWeekdayIdx],
+    },
+    biggestOrder: {
+      amount: biggestOrder.totalAmount || 0,
+      date: biggestOrder.createdAt,
+      vendorName: vendorName(biggestOrder),
+    },
+    firstOrder: {
+      date: firstOrder.createdAt,
+      vendorName: vendorName(firstOrder),
+    },
+    persona: orderPersona(byWeekday, byHour),
+  };
+};
+
 /**
  * GET /api/customer/wrapped?year=2026
- *
  * A "year in food" summary for the signed-in customer, Spotify-Wrapped style.
  * Counts every order that wasn't cancelled (checkout is over WhatsApp, so
  * payment status is almost never "paid" and can't be the filter).
  */
 const getWrapped = async (req, res) => {
   try {
-    const now = new Date();
-    const year = Number(req.query.year) || now.getFullYear();
-    const start = new Date(year, 0, 1);
-    const end = year === now.getFullYear() ? now : new Date(year + 1, 0, 1);
-
+    const { year, start, end } = yearWindow(req.query.year);
     const orders = await Order.find({
       customerId: req.user._id,
       status: { $ne: "cancelled" },
@@ -239,95 +337,59 @@ const getWrapped = async (req, res) => {
     if (!orders.length) {
       return res.status(200).json({ success: true, hasData: false, year });
     }
-
-    const vendorName = (o) => o.vendorId?.businessName || "a vendor";
-
-    let totalSpent = 0;
-    let totalItems = 0;
-    const byVendor = new Map(); // id -> { name, slug, logo, orders, spent }
-    const byItem = new Map(); // name -> qty
-    const byMonth = Array(12).fill(0);
-    const byWeekday = Array(7).fill(0);
-    const byHour = Array(24).fill(0);
-    let biggestOrder = orders[0];
-
-    for (const o of orders) {
-      const amt = o.totalAmount || 0;
-      totalSpent += amt;
-      if (amt > (biggestOrder.totalAmount || 0)) biggestOrder = o;
-
-      const d = new Date(o.createdAt);
-      byMonth[d.getMonth()] += 1;
-      byWeekday[d.getDay()] += 1;
-      byHour[d.getHours()] += 1;
-
-      const vid = String(o.vendorId?._id || o.vendorId || "unknown");
-      const v =
-        byVendor.get(vid) ||
-        {
-          name: vendorName(o),
-          slug: o.vendorId?.slug || null,
-          logo: o.vendorId?.logo || null,
-          orders: 0,
-          spent: 0,
-        };
-      v.orders += 1;
-      v.spent += amt;
-      byVendor.set(vid, v);
-
-      for (const it of o.items || []) {
-        const q = it.quantity || 1;
-        totalItems += q;
-        if (it.name) byItem.set(it.name, (byItem.get(it.name) || 0) + q);
-      }
-    }
-
-    const vendorsRanked = [...byVendor.values()].sort(
-      (a, b) => b.orders - a.orders || b.spent - a.spent,
-    );
-    const itemsRanked = [...byItem.entries()]
-      .map(([name, qty]) => ({ name, qty }))
-      .sort((a, b) => b.qty - a.qty);
-    const busiestMonthIdx = byMonth.indexOf(Math.max(...byMonth));
-    const busiestWeekdayIdx = byWeekday.indexOf(Math.max(...byWeekday));
-    const firstOrder = orders[0];
-
-    return res.status(200).json({
-      success: true,
-      hasData: true,
-      year,
-      totalOrders: orders.length,
-      totalSpent,
-      totalItems,
-      uniqueVendors: byVendor.size,
-      topVendor: vendorsRanked[0] || null,
-      runnerUpVendors: vendorsRanked.slice(1, 3),
-      topItems: itemsRanked.slice(0, 3),
-      favoriteDish: itemsRanked[0] || null,
-      busiestMonth: {
-        name: MONTHS[busiestMonthIdx],
-        orders: byMonth[busiestMonthIdx],
-      },
-      favoriteDay: {
-        name: WEEKDAYS[busiestWeekdayIdx],
-        orders: byWeekday[busiestWeekdayIdx],
-      },
-      biggestOrder: {
-        amount: biggestOrder.totalAmount || 0,
-        date: biggestOrder.createdAt,
-        vendorName: vendorName(biggestOrder),
-      },
-      firstOrder: {
-        date: firstOrder.createdAt,
-        vendorName: vendorName(firstOrder),
-      },
-      persona: orderPersona(byWeekday, byHour),
-    });
+    return res
+      .status(200)
+      .json({ success: true, ...summarizeWrapped(orders, year) });
   } catch (error) {
     console.error("getWrapped error:", error.message);
     return res
       .status(500)
       .json({ success: false, message: "Could not build your Wrapped" });
+  }
+};
+
+/**
+ * GET /api/customer/wrapped-by-phone?phone=080...&year=2026
+ *
+ * Public. Lets someone with no account see their Wrapped by the phone number
+ * they order with — that's where most order data actually lives, since
+ * checkout runs as a WhatsApp guest. The response is aggregate only (no
+ * addresses, no names, no order-level detail beyond vendor/dish/amount), and
+ * the route is rate-limited, so a probed number leaks little.
+ */
+const getWrappedByPhone = async (req, res) => {
+  try {
+    const variants = phoneVariants(req.query.phone);
+    if (!variants.length) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Enter a valid phone number" });
+    }
+    const { year, start, end } = yearWindow(req.query.year);
+
+    const orders = await Order.find({
+      status: { $ne: "cancelled" },
+      createdAt: { $gte: start, $lt: end },
+      $or: [
+        { "guestInfo.phone": { $in: variants } },
+        { "customerInfo.phone": { $in: variants } },
+      ],
+    })
+      .sort({ createdAt: 1 })
+      .populate("vendorId", "businessName slug logo")
+      .lean();
+
+    if (!orders.length) {
+      return res.status(200).json({ success: true, hasData: false, year });
+    }
+    return res
+      .status(200)
+      .json({ success: true, ...summarizeWrapped(orders, year) });
+  } catch (error) {
+    console.error("getWrappedByPhone error:", error.message);
+    return res
+      .status(500)
+      .json({ success: false, message: "Could not build that Wrapped" });
   }
 };
 
@@ -380,4 +442,5 @@ module.exports = {
   getAllCustomersWithUserDetails,
   saveBirthday,
   getWrapped,
+  getWrappedByPhone,
 };
