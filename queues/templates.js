@@ -51,16 +51,21 @@ function isKnownTemplate(template) {
  */
 const WHATSAPP_TEMPLATES = {
   "wa-first-order": ({ name, vendorName, orderId }) =>
-    `Hi ${name || "there"}, thanks for your first order with ${
+    `Hi ${name || "there"},\n\n` +
+    `Thank you for your first order with ${
       vendorName || "us"
-    } on Chowspace \u{1F9E1} Order ${orderId} is being sorted out now.\n\n` +
-    `Order from us again anytime on https://chowspace.ng\n\n` +
-    `Reply STOP to opt out of these messages.`,
+    } on Chowspace. Your order ${orderId} has been received and is being ` +
+    `prepared.\n\n` +
+    `We're glad to have you with us, and we hope to serve you again soon.\n\n` +
+    `Reorder anytime at https://chowspace.ng`,
   "wa-returning": ({ name, vendorName, orderId }) =>
-    `Hi ${name || "there"}, good to have you back at ${
-      vendorName || "Chowspace"
-    }! Order ${orderId} received — thank you \u{1F64F}\n\n` +
-    `Order again on https://chowspace.ng`,
+    `Hi ${name || "there"},\n\n` +
+    `Thank you for ordering from ${
+      vendorName || "us"
+    } again on Chowspace. Your order ${orderId} has been received and is ` +
+    `being prepared.\n\n` +
+    `We appreciate your continued support.\n\n` +
+    `Reorder anytime at https://chowspace.ng`,
 };
 
 function isKnownWhatsappTemplate(template) {
