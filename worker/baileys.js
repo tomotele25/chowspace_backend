@@ -89,6 +89,13 @@ async function start(db) {
   const { state, saveCreds } = await useMongoAuthState(db);
   const { version } = await fetchLatestBaileysVersion();
 
+  // Pairing-code login when WA_PAIR_NUMBER is set (digits, country code, no +).
+  // The QR printed to Render's log viewer is usually too distorted to scan;
+  // a pairing code is plain text you type into WhatsApp > Linked devices >
+  // "Link with phone number instead".
+  const pairNumber = (process.env.WA_PAIR_NUMBER || "").replace(/\D/g, "");
+  const usePairingCode = Boolean(pairNumber);
+
   sock = makeWASocket({
     version,
     auth: state,
@@ -96,6 +103,22 @@ async function start(db) {
     printQRInTerminal: false,
     markOnlineOnConnect: false, // stay unobtrusive; don't steal presence from the phone
   });
+
+  if (usePairingCode && !sock.authState.creds.registered) {
+    // Small delay so the socket finishes its initial handshake first.
+    setTimeout(async () => {
+      try {
+        const code = await sock.requestPairingCode(pairNumber);
+        console.log(
+          `\n[wa-worker] PAIRING CODE for +${pairNumber}: ${code}\n` +
+            `Enter it in WhatsApp on that phone: Settings > Linked devices > ` +
+            `Link a device > Link with phone number instead.\n`,
+        );
+      } catch (err) {
+        console.error("[wa-worker] requestPairingCode failed:", err.message);
+      }
+    }, 3000);
+  }
 
   sock.ev.on("creds.update", saveCreds);
   sock.ev.on("messages.upsert", handleInbound);
