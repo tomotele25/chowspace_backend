@@ -9,6 +9,9 @@ const { priceOrder } = require("../utils/pricing");
 const { payoutVendorForOrder } = require("../utils/moneiPayout");
 const Customer = require("../models/customer");
 const crypto = require("crypto");
+const { getRedis } = require("../queues/redis");
+const { enqueueWhatsapp } = require("../queues/whatsapp");
+const { normalizePhone } = require("../utils/phone");
 
 const { MoneiSDK, DepositMethodsEnum } = require("monei-sdk");
 
@@ -448,6 +451,102 @@ const moneiWebhook = async (req, res) => {
   }
 };
 
+const DAY_SECONDS = 86400;
+const QUOTA_TTL_SECONDS = 2 * DAY_SECONDS;
+const MARKETING_GAP_SECONDS = 14 * DAY_SECONDS;
+
+/** yyyymmdd in UTC, for the rolling daily send quota key. */
+function utcDateKey(d = new Date()) {
+  return d.toISOString().slice(0, 10).replace(/-/g, "");
+}
+
+/**
+ * Sends the courtesy WhatsApp message that follows an order — a warm note on a
+ * customer's first order, a lighter one after that.
+ *
+ * Fire-and-forget and fully swallowed: messaging must never affect whether an
+ * order is created. Every guard fails safe (missing config, no phone, opted
+ * out, over quota) by simply not sending.
+ *
+ * There is deliberately no inactive / win-back path here. That is unsolicited
+ * bulk messaging, which is what gets a WhatsApp number banned, and this runs
+ * on the real business line.
+ */
+async function maybeSendOrderWhatsapp(order, vendorId) {
+  try {
+    if (process.env.WA_ENABLED !== "true") return;
+
+    const phone = normalizePhone(
+      order.customerInfo?.phone || order.guestInfo?.phone,
+    );
+    if (!phone) return;
+
+    const redis = getRedis();
+    if (!redis) return;
+
+    // Lifetime non-cancelled order count. Seeded for existing customers by
+    // scripts/seed-wa-redis.js so long-time regulars aren't greeted as new.
+    const count = await redis.incr(`cust:orders:${phone}`);
+
+    if (await redis.get(`wa:optout:${phone}`)) return;
+
+    const template = count === 1 ? "wa-first-order" : "wa-returning";
+
+    // Never repeat the first-order message; space anything else out by 14 days.
+    if (await redis.get(`wa:sent:${phone}:${template}`)) return;
+    if (template === "wa-returning" && (await redis.get(`wa:sent:${phone}:marketing`)))
+      return;
+
+    // Global daily cap — a blunt backstop against a bad loop or a spike.
+    const quotaKey = `wa:quota:${utcDateKey()}`;
+    const used = await redis.incr(quotaKey);
+    if (used === 1) await redis.expire(quotaKey, QUOTA_TTL_SECONDS);
+    const cap = Number(process.env.WA_DAILY_CAP || 60);
+    if (used > cap) {
+      console.warn(`[wa] daily cap ${cap} reached — skipping ${phone}`);
+      return;
+    }
+
+    let vendorName = "";
+    try {
+      const vendor = await Vendor.findById(vendorId).select("businessName");
+      vendorName = vendor?.businessName || "";
+    } catch {
+      /* name is optional in the copy */
+    }
+
+    const { queued } = await enqueueWhatsapp({
+      template,
+      to: phone,
+      data: {
+        name: (order.customerInfo?.name || order.guestInfo?.name || "").split(
+          " ",
+        )[0],
+        vendorName,
+        orderId: order.orderId,
+      },
+    });
+
+    if (queued) {
+      // Mark optimistically. The worker re-checks and re-marks on real send;
+      // worst case a transient publish that never delivered suppresses one
+      // future message, which is the safe direction to fail.
+      if (template === "wa-first-order") {
+        await redis.set(`wa:sent:${phone}:${template}`, "1");
+      } else {
+        await redis.set(`wa:sent:${phone}:${template}`, "1", {
+          ex: MARKETING_GAP_SECONDS,
+        });
+      }
+      await redis.set(`wa:sent:${phone}:marketing`, "1", {
+        ex: MARKETING_GAP_SECONDS,
+      });
+    }
+  } catch (err) {
+    console.error("[wa] order message failed (ignored):", err.message);
+  }
+}
+
 const createOrder = async (req, res) => {
   const {
     items,
@@ -532,6 +631,10 @@ const createOrder = async (req, res) => {
     });
 
     res.status(201).json(newOrder);
+
+    // After the response: a courtesy WhatsApp message. Never awaited into the
+    // request path, never able to fail the order.
+    maybeSendOrderWhatsapp(newOrder, vendorId);
   } catch (err) {
     console.error("Order creation failed:", err);
     res.status(500).json({ message: "Failed to create order." });

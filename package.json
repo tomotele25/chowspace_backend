@@ -15,11 +15,14 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "worker": "node worker/index.js"
   },
   "dependencies": {
     "@monei-js/node-sdk": "^2.0.1",
     "@upstash/qstash": "^2.11.3",
+    "@upstash/redis": "^1.34.3",
+    "@whiskeysockets/baileys": "^6.7.9",
     "axios": "^1.10.0",
     "bcrypt": "^6.0.0",
     "cloudinary": "^1.41.3",
@@ -36,6 +39,8 @@
     "node-cron": "^4.2.1",
     "nodemailer": "^7.0.5",
     "nodemon": "^3.1.10",
+    "pino": "^8.21.0",
+    "qrcode-terminal": "^0.12.0",
     "react-paystack": "^6.0.0",
     "slugify": "^1.6.6",
     "socket.io": "^4.8.3"

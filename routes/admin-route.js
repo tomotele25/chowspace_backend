@@ -7,7 +7,10 @@ const {
   deleteRider,
   assignOrderToRider,
 } = require("../controller/rider-controller");
-const { getQueueStats } = require("../controller/queue-controller");
+const {
+  getQueueStats,
+  getWhatsappStatus,
+} = require("../controller/queue-controller");
 const { requireRole } = require("../middleware/requireRole");
 
 const router = express.Router();
@@ -32,5 +35,8 @@ router.post("/rider/assign-order", adminOnly, assignOrderToRider);
 // Queue depth and recent failures. Admin-only because the failure list carries
 // customer email addresses.
 router.get("/admin/queues", adminOnly, getQueueStats);
+
+// Baileys worker health: is the business number still linked, quota left today.
+router.get("/admin/whatsapp/status", adminOnly, getWhatsappStatus);
 
 module.exports = router;

@@ -1,3 +1,4 @@
+const axios = require("axios");
 const { getClient, queuesEnabled, jobsUrl } = require("../queues/client");
 const { EMAIL_JOB_PATH } = require("../queues/email");
 
@@ -69,4 +70,39 @@ function safeTemplate(body) {
   }
 }
 
-module.exports = { getQueueStats };
+/**
+ * WhatsApp worker health, for the admin UI.
+ *
+ * The worker is a separate Render service holding the Baileys socket. This
+ * just proxies its /health so an admin can see, in one place, whether the
+ * number is still linked and how much of today's send quota is gone.
+ */
+const getWhatsappStatus = async (req, res) => {
+  const base = process.env.WA_WORKER_URL;
+  if (!base) {
+    return res.status(200).json({
+      success: true,
+      enabled: false,
+      message: "WA_WORKER_URL is not set — automated WhatsApp is off.",
+    });
+  }
+  try {
+    const { data } = await axios.get(`${base.replace(/\/$/, "")}/health`, {
+      timeout: 5000,
+    });
+    res.status(200).json({
+      success: true,
+      enabled: process.env.WA_ENABLED === "true",
+      worker: data,
+    });
+  } catch (err) {
+    console.error("getWhatsappStatus error:", err.message);
+    res.status(503).json({
+      success: false,
+      enabled: process.env.WA_ENABLED === "true",
+      message: "WhatsApp worker unreachable",
+    });
+  }
+};
+
+module.exports = { getQueueStats, getWhatsappStatus };

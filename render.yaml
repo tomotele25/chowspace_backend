@@ -1,0 +1,38 @@
+# Render Blueprint for the WhatsApp (Baileys) worker.
+#
+# The main API stays on Vercel. This is the one piece that needs a process
+# that never exits: it holds the WhatsApp connection for the business line
+# and receives send jobs from QStash at /jobs/whatsapp.
+#
+# Free tier notes:
+#  - the disk is ephemeral, so the WhatsApp session is stored in MongoDB
+#    (worker/mongoAuthState.js) — no re-scan on redeploy
+#  - a free web service sleeps after ~15 min idle; a 10-minute QStash schedule
+#    hitting GET /health keeps it awake
+services:
+  - type: web
+    name: chowspace-wa-worker
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm run worker
+    healthCheckPath: /health
+    envVars:
+      - key: DB_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      - key: QSTASH_CURRENT_SIGNING_KEY
+        sync: false
+      - key: QSTASH_NEXT_SIGNING_KEY
+        sync: false
+      - key: WA_DAILY_CAP
+        value: "60"
+      - key: WA_MIN_INTERVAL_MS
+        value: "45000"
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false

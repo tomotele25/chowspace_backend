@@ -38,6 +38,43 @@ function isKnownTemplate(template) {
   return Object.prototype.hasOwnProperty.call(TEMPLATES, template);
 }
 
+/**
+ * WhatsApp message bodies.
+ *
+ * Same key-not-body rule as the email table: the job carries a key plus plain
+ * data, and the text is rendered at send time — inside the Baileys worker,
+ * which imports this exact map. Kept deliberately personal and
+ * non-promotional; these go out from the real business line seconds after an
+ * order, so they must read like a shop replying, not like marketing.
+ *
+ *   data: { name, vendorName, orderId }
+ */
+const WHATSAPP_TEMPLATES = {
+  "wa-first-order": ({ name, vendorName, orderId }) =>
+    `Hi ${name || "there"}, thanks for your first order with ${
+      vendorName || "us"
+    } on Chowspace \u{1F9E1} Order ${orderId} is being sorted out now.\n\n` +
+    `Order from us again anytime on https://chowspace.ng\n\n` +
+    `Reply STOP to opt out of these messages.`,
+  "wa-returning": ({ name, vendorName, orderId }) =>
+    `Hi ${name || "there"}, good to have you back at ${
+      vendorName || "Chowspace"
+    }! Order ${orderId} received — thank you \u{1F64F}\n\n` +
+    `Order again on https://chowspace.ng`,
+};
+
+function isKnownWhatsappTemplate(template) {
+  return Object.prototype.hasOwnProperty.call(WHATSAPP_TEMPLATES, template);
+}
+
+/** Renders a WhatsApp body. Throws on an unknown key so the job fails loudly. */
+function renderWhatsapp({ template, data }) {
+  if (!isKnownWhatsappTemplate(template)) {
+    throw new Error(`Unknown whatsapp template: ${template}`);
+  }
+  return WHATSAPP_TEMPLATES[template](data || {});
+}
+
 /** Renders and sends. Throws on an unknown key so the job fails loudly. */
 function deliver({ template, to, data }) {
   if (!isKnownTemplate(template)) {
@@ -46,4 +83,11 @@ function deliver({ template, to, data }) {
   return TEMPLATES[template](to, data || {});
 }
 
-module.exports = { TEMPLATES, isKnownTemplate, deliver };
+module.exports = {
+  TEMPLATES,
+  isKnownTemplate,
+  deliver,
+  WHATSAPP_TEMPLATES,
+  isKnownWhatsappTemplate,
+  renderWhatsapp,
+};
