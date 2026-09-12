@@ -868,5 +868,4 @@ module.exports = {
   initPromotePayment,
   verifyPromotePayment,
   getReviews,
-  PUBLIC_VENDOR_FIELDS,
 };

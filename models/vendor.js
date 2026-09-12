@@ -234,8 +234,4 @@ const vendorSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-// getAllVendor (the homepage's backing endpoint) filters on both of these
-// every request — without this it's a full collection scan.
-vendorSchema.index({ isPromoted: 1, promotionExpiresAt: 1 });
-
 module.exports = mongoose.model("Vendor", vendorSchema);

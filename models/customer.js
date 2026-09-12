@@ -39,11 +39,6 @@ const customerSchema = new mongoose.Schema(
 
 // No unique index on user anymore
 
-// Not unique (duplicates can exist — see comment above), but every
-// phone-keyed lookup (saveBirthday, wrapped-by-phone) was an unindexed scan
-// without this.
-customerSchema.index({ phone: 1 });
-
 // Auto-sync hasBirthday flag on save
 customerSchema.pre("save", function (next) {
   this.hasBirthday = !(!this.birthday?.month || !this.birthday?.day);
