@@ -8,6 +8,7 @@ const { creditVendorForOrder } = require("../utils/creditVendor");
 const { priceOrder } = require("../utils/pricing");
 const { payoutVendorForOrder } = require("../utils/moneiPayout");
 const Customer = require("../models/customer");
+const Influencer = require("../models/influencer");
 const crypto = require("crypto");
 const { getRedis } = require("../queues/redis");
 const { enqueueWhatsapp } = require("../queues/whatsapp");
@@ -565,6 +566,9 @@ const createOrder = async (req, res) => {
     // history (getOrderHistoryByCustomer) can find this order by customerId,
     // not only by phone.
     customerId,
+    // Optional: the influencer code the checkout page found in localStorage
+    // from a chowspace.ng/i/<code> visit within the last 30 days.
+    referralCode,
   } = req.body;
 
   if (
@@ -607,10 +611,28 @@ const createOrder = async (req, res) => {
 
     const confirmationToken = crypto.randomBytes(16).toString("hex");
 
+    // Best-effort influencer attribution. An unknown/invalid/missing code
+    // must never block an order, so failures here just mean no attribution.
+    let referral;
+    if (referralCode) {
+      try {
+        const influencer = await Influencer.findOne({
+          code: String(referralCode).trim(),
+          active: true,
+        }).select("_id code");
+        if (influencer) {
+          referral = { code: influencer.code, influencerId: influencer._id };
+        }
+      } catch (err) {
+        console.error("referral lookup failed (ignored):", err.message);
+      }
+    }
+
     const newOrder = await Order.create({
       orderId,
       vendorId,
       customerId: customerId || null,
+      ...(referral ? { referral } : {}),
       // Names and prices from the server, so the receipt matches what was
       // actually charged.
       items: priced.lines,
@@ -675,15 +697,34 @@ const getAllOrders = async (req, res) => {
   // Scoped to the token, never the query string. `?vendorId=` used to be the
   // only filter, and omitting it returned every order the platform has ever
   // taken — names, phones and delivery addresses included.
+  //
+  // Pagination is opt-in: several dashboards (Analytics.jsx, Wallet.jsx)
+  // compute their own totals over the full result set client-side, so
+  // defaulting to a capped page would silently truncate those numbers.
+  // Passing ?page=&limit= gets a bounded, paginated response; omitting them
+  // keeps today's unbounded behavior exactly as-is.
   try {
-    const orders = await Order.find({ vendorId: req.vendorId })
+    const { page, limit } = req.query;
+    const paginate = page != null || limit != null;
+    const pageNum = Math.max(Number(page) || 1, 1);
+    const limitNum = Math.min(Number(limit) || 100, 500);
+
+    let query = Order.find({ vendorId: req.vendorId })
       .sort({ createdAt: -1 })
       .populate("customerId", "fullname email");
+
+    if (paginate) query = query.skip((pageNum - 1) * limitNum).limit(limitNum);
+
+    const [orders, total] = await Promise.all([
+      query,
+      paginate ? Order.countDocuments({ vendorId: req.vendorId }) : null,
+    ]);
 
     res.status(200).json({
       success: true,
       orders,
       message: "Orders fetched successfully",
+      ...(paginate ? { page: pageNum, limit: limitNum, total } : {}),
     });
   } catch (err) {
     console.error("Fetching orders failed:", err.message);
@@ -760,11 +801,28 @@ const getManagerOrders = async (req, res) => {
         .json({ message: "No vendor ID associated with manager." });
     }
 
-    const orders = await Order.find({ vendorId })
+    // Opt-in pagination, same reasoning as getAllOrders above.
+    const { page, limit } = req.query;
+    const paginate = page != null || limit != null;
+    const pageNum = Math.max(Number(page) || 1, 1);
+    const limitNum = Math.min(Number(limit) || 100, 500);
+
+    let query = Order.find({ vendorId })
       .sort({ createdAt: -1 })
       .populate("customerId", "fullname email");
 
-    return res.status(200).json({ success: true, orders });
+    if (paginate) query = query.skip((pageNum - 1) * limitNum).limit(limitNum);
+
+    const [orders, total] = await Promise.all([
+      query,
+      paginate ? Order.countDocuments({ vendorId }) : null,
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      orders,
+      ...(paginate ? { page: pageNum, limit: limitNum, total } : {}),
+    });
   } catch (err) {
     console.error("Error fetching manager orders:", err);
     return res
@@ -797,15 +855,33 @@ const cleanupPendingOrders = async (req, res) => {
 };
 
 const getAllOrdersForAdmin = async (req, res) => {
+  // Every order the platform has ever taken, no filter at all — the worst
+  // case of the three. Same opt-in pagination as getAllOrders/
+  // getManagerOrders: admin analytics pages that total the full result set
+  // client-side keep working unpaginated exactly as before; a caller that
+  // wants a bounded page passes ?page=&limit=.
   try {
-    const orders = await Order.find({})
+    const { page, limit } = req.query;
+    const paginate = page != null || limit != null;
+    const pageNum = Math.max(Number(page) || 1, 1);
+    const limitNum = Math.min(Number(limit) || 100, 500);
+
+    let query = Order.find({})
       .populate("vendorId", "name")
       .populate("customerId", "email")
       .sort({ createdAt: -1 });
 
+    if (paginate) query = query.skip((pageNum - 1) * limitNum).limit(limitNum);
+
+    const [orders, total] = await Promise.all([
+      query,
+      paginate ? Order.countDocuments({}) : null,
+    ]);
+
     res.status(200).json({
       success: true,
       orders,
+      ...(paginate ? { page: pageNum, limit: limitNum, total } : {}),
     });
   } catch (err) {
     console.error("Error fetching orders for admin:", err);

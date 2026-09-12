@@ -11,6 +11,10 @@ const {
   getQueueStats,
   getWhatsappStatus,
 } = require("../controller/queue-controller");
+const {
+  createInfluencer,
+  listInfluencers,
+} = require("../controller/influencer-controller");
 const { requireRole } = require("../middleware/requireRole");
 
 const router = express.Router();
@@ -38,5 +42,9 @@ router.get("/admin/queues", adminOnly, getQueueStats);
 
 // Baileys worker health: is the business number still linked, quota left today.
 router.get("/admin/whatsapp/status", adminOnly, getWhatsappStatus);
+
+// Influencer referral program: create a code/link, see clicks/installs/orders.
+router.post("/admin/influencers", adminOnly, createInfluencer);
+router.get("/admin/influencers", adminOnly, listInfluencers);
 
 module.exports = router;

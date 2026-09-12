@@ -46,6 +46,16 @@ const orderSchema = new mongoose.Schema(
       ref: "User",
       index: true,
     },
+
+    // Which influencer link (if any) this order traces back to. Set
+    // best-effort in createOrder from a code the checkout page picked up
+    // from a chowspace.ng/i/<code> visit within the last 30 days — never
+    // required, never blocks an order.
+    referral: {
+      code: String,
+      influencerId: { type: mongoose.Schema.Types.ObjectId, ref: "Influencer" },
+    },
+
     deliveryMethod: String,
     deliveryLocation: String,
     note: String,
@@ -130,5 +140,11 @@ const orderSchema = new mongoose.Schema(
 
 // Every order list is "this vendor, newest first".
 orderSchema.index({ vendorId: 1, createdAt: -1 });
+// Influencer reporting: "this code's orders, newest first".
+orderSchema.index({ "referral.code": 1, createdAt: -1 });
+// Order-history-by-phone lookups (getOrderHistoryByPhone,
+// getWrappedByPhone) were unindexed scans without these.
+orderSchema.index({ "guestInfo.phone": 1 });
+orderSchema.index({ "customerInfo.phone": 1 });
 
 module.exports = mongoose.model("Order", orderSchema);
