@@ -4,6 +4,14 @@ const Manager = require("../models/manager");
 const product = require("../models/product");
 const { isPubliclyVisible } = require("../utils/vendorVisibility");
 const { getEffectiveStatus } = require("../utils/Storehours");
+const { PUBLIC_VENDOR_FIELDS } = require("./vendor-controller");
+
+// What the storefront actually renders per product — trims bank/internal
+// fields that never belonged in this response (there aren't any on Product,
+// but this also caps payload size as fields get added later) and keeps the
+// shape explicit rather than implicit-by-omission.
+const PUBLIC_PRODUCT_FIELDS =
+  "productName price category image vendor available position createdAt";
 
 // Create a product
 const createProduct = async (req, res) => {
@@ -249,7 +257,9 @@ const getProductsByVendor = async (req, res) => {
   const vendorId = req.params.id;
 
   try {
-    const products = await Product.find({ vendor: vendorId });
+    const products = await Product.find({ vendor: vendorId }).select(
+      PUBLIC_PRODUCT_FIELDS,
+    );
 
     if (!products || products.length === 0) {
       return res
@@ -268,14 +278,17 @@ const getProductsByVendorSlug = async (req, res) => {
   try {
     const { slug } = req.params;
 
-    const vendor = await Vendor.findOne({ slug }).select("-password");
+    // Same public projection the vendor list/slug endpoints use — this feeds
+    // the storefront too, so it has no business returning bank details,
+    // subaccount ids or verification internals the way "-password" did.
+    const vendor = await Vendor.findOne({ slug }).select(PUBLIC_VENDOR_FIELDS);
     if (!vendor) {
       return res.status(404).json({ message: "Vendor not found" });
     }
 
-    const products = await Product.find({ vendor: vendor._id }).sort({
-      position: 1,
-    });
+    const products = await Product.find({ vendor: vendor._id })
+      .select(PUBLIC_PRODUCT_FIELDS)
+      .sort({ position: 1 });
 
     // Feeds the public storefront, so it respects the same gate as the vendor
     // list — otherwise a pending vendor's menu stays reachable by slug even
