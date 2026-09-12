@@ -40,4 +40,9 @@ const productSchema = mongoose.Schema(
   { timestamps: true }
 );
 
+// Every storefront product listing queries by vendor
+// (getProductsByVendor / getProductsByVendorSlug) — without this it's a full
+// collection scan on every menu page load.
+productSchema.index({ vendor: 1 });
+
 module.exports = mongoose.model("Product", productSchema);
