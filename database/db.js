@@ -2,7 +2,16 @@ require("dotenv").config();
 const mongoose = require("mongoose");
 
 const MAX_RETRIES = 5;
-const RETRY_DELAY_MS = 5000;
+const RETRY_DELAY_MS = 2000;
+// How long a single attempt waits before deciding the cluster is
+// unreachable. This was 60000 (a full minute) per attempt — harmless before,
+// because connectToDb() never actually awaited it (see git history), so a
+// slow/failed attempt retried silently in the background. Now that it's
+// correctly awaited by startServer(), that same 60s-per-attempt config means
+// a real hiccup blocks server startup for up to 5 minutes (5 attempts).
+// 8s is enough for a healthy connection (observed ~2s) with room to spare,
+// and fails over to the next attempt fast instead of hanging.
+const SERVER_SELECTION_TIMEOUT_MS = 8000;
 
 /**
  * Cached across invocations on the same warm Vercel lambda, the standard fix
@@ -19,7 +28,10 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function connectWithRetry(attempt = 0) {
   try {
     await mongoose.connect(process.env.DB_URL, {
-      serverSelectionTimeoutMS: 60000,
+      serverSelectionTimeoutMS: SERVER_SELECTION_TIMEOUT_MS,
+      // Unrelated to connection setup — this bounds an idle established
+      // socket during a long-running query, not the initial handshake, so
+      // it stays generous.
       socketTimeoutMS: 60000,
     });
     console.log("✅ MongoDB connected successfully");
