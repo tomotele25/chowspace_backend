@@ -373,35 +373,51 @@ app.get("/support", (req, res) => {
 });
 
 /* ==============================
+   🔌 ROUTES
+   Mounted immediately, not gated behind the DB connection below. They used
+   to be mounted inside startServer() after `await connectToDb()` — but
+   Vercel exports `app` and starts routing requests to it the moment this
+   module finishes loading, without waiting for startServer()'s promise to
+   settle. Any request landing on a cold container while connectToDb() was
+   still in flight hit an `app` with zero routes registered, so Express fell
+   through to its own default handler: a genuine, instant 404 for a route
+   that does exist, just not yet. Mongoose queues queries by default until
+   it's connected, so nothing here actually needs the connection ready first.
+============================== */
+app.use("/api/auth", authLimiter);
+app.use("/api/orders", orderLimiter);
+
+app.use("/api", authRoute);
+app.use("/api", vendorRoute);
+app.use("/api", productRoute);
+app.use("/api", managerRoute);
+app.use("/api", orderRoute);
+app.use("/api", locationRoute);
+app.use("/api", disputeRoute);
+app.use("/api", supportRoute);
+app.use("/api", customerRoute);
+app.use("/api", announcementRoute);
+app.use("/api", adminRoute);
+app.use("/api", chatRoute);
+
+/* ==============================
    🚀 START
 ============================== */
 const startServer = async () => {
   try {
     await connectToDb();
-
-    app.use("/api/auth", authLimiter);
-    app.use("/api/orders", orderLimiter);
-
-    app.use("/api", authRoute);
-    app.use("/api", vendorRoute);
-    app.use("/api", productRoute);
-    app.use("/api", managerRoute);
-    app.use("/api", orderRoute);
-    app.use("/api", locationRoute);
-    app.use("/api", disputeRoute);
-    app.use("/api", supportRoute);
-    app.use("/api", customerRoute);
-    app.use("/api", announcementRoute);
-    app.use("/api", adminRoute);
-    app.use("/api", chatRoute);
-
-    server.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-    });
   } catch (error) {
+    // Routes are already live and database/db.js keeps retrying/queuing on
+    // its own — a connection hiccup shouldn't take the whole process down.
+    // This used to call process.exit(1), which on a serverless container
+    // just forces a fresh cold start on the next request instead of letting
+    // a transient blip resolve itself.
     console.error("❌ DB connection failed:", error.message);
-    process.exit(1);
   }
+
+  server.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+  });
 };
 
 startServer();
